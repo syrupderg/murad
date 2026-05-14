@@ -1,0 +1,681 @@
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const modList = document.getElementById('mod-list');
+const versionSelector = document.getElementById('version-selector');
+
+let selectedLoader = "fabric";
+let selectedTargetVersions = ["26.1.2"];
+
+let scannedMods = [];
+let mcVersionsCache = []; 
+
+let currentSortMode = "COMP"; 
+let nameSortDir = 1; 
+let compSortDir = 1; 
+let catSortDirs = { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }; 
+let searchQuery = ""; 
+
+const PRIORITY = { GREEN: 1, YELLOW: 2, RED: 3, NOT_FOUND: 4, CHECKING: 5 };
+const PRIORITY_NAMES = {
+    1: "Compatible", 2: "Mismatch", 3: "Incompatible", 
+    4: "Not Found", 5: "Checking / Errors"
+};
+
+const VERSION_GROUPS = [
+    { name: "26.1.2-26.1", versions: ["26.1.2", "26.1.1", "26.1"] },
+    { name: "1.21.11", versions: ["1.21.11"] },
+    { name: "1.21.10-1.21.9", versions: ["1.21.10", "1.21.9"] },
+    { name: "1.21.8-1.21.7", versions: ["1.21.8", "1.21.7"] },
+    { name: "1.21.6", versions: ["1.21.6"] },
+    { name: "1.21.5", versions: ["1.21.5"] },
+    { name: "1.21.4", versions: ["1.21.4"] },
+    { name: "1.21.3-1.21.2", versions: ["1.21.3", "1.21.2"] },
+    { name: "1.21.1-1.21", versions: ["1.21.1", "1.21"] },
+    { name: "1.20.6-1.20.5", versions: ["1.20.6", "1.20.5"] },
+    { name: "1.20.4-1.20.3", versions: ["1.20.4", "1.20.3"] },
+    { name: "1.20.2", versions: ["1.20.2"] },
+    { name: "1.20.1-1.20", versions: ["1.20.1", "1.20"] }
+];
+
+const LOADER_FILES = {
+    fabric: 'icons/fabric.svg',
+    quilt: 'icons/quilt.svg',
+    forge: 'icons/forge.svg',
+    neoforge: 'icons/neoforge.svg'
+};
+
+const TINY_LOADER_FILES = {
+    fabric: 'icons/fabric-tiny.svg',
+    quilt: 'icons/quilt-tiny.svg',
+    forge: 'icons/forge-tiny.svg',
+    neoforge: 'icons/neoforge-tiny.svg'
+};
+
+const LOADER_COLORS = {
+    fabric: '#dbb69b',
+    quilt: '#c796f9',
+    neoforge: '#f99e6b',
+    forge: '#959eef'
+};
+
+const LOADER_SORT_ORDER = {
+    fabric: 1,
+    quilt: 2,
+    neoforge: 3,
+    forge: 4
+};
+
+function isValidRelease(v) {
+    return /^\d+\.\d+(\.\d+)?$/.test(v);
+}
+
+function parseVersion(v) {
+    let parts = v.split('.').map(Number);
+    return { original: v, maj: parts[0] || 0, min: parts[1] || 0, pat: parts[2] || 0 };
+}
+
+function isAtLeast1_20(v) {
+    let p = parseVersion(v);
+    if (p.maj > 1) return true; 
+    if (p.maj === 1 && p.min >= 20) return true;
+    return false;
+}
+
+function timeAgo(dateString) {
+    const date = new Date(dateString);
+    const seconds = Math.floor((new Date() - date) / 1000);
+    
+    let interval = Math.floor(seconds / 31536000);
+    if (interval > 1) return interval + " years ago";
+    if (interval === 1) return "last year";
+    
+    interval = Math.floor(seconds / 2592000);
+    if (interval > 1) return interval + " months ago";
+    if (interval === 1) return "last month";
+    
+    interval = Math.floor(seconds / 86400);
+    if (interval > 1) return interval + " days ago";
+    if (interval === 1) return "yesterday";
+    
+    interval = Math.floor(seconds / 3600);
+    if (interval > 1) return interval + " hours ago";
+    if (interval === 1) return "1 hour ago";
+    
+    interval = Math.floor(seconds / 60);
+    if (interval > 1) return interval + " minutes ago";
+    if (interval === 1) return "1 minute ago";
+    
+    return "just now";
+}
+
+async function getFileHash(file) {
+    const buffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest('SHA-1', buffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function loadMcVersions() {
+    const res = await fetch('https://api.modrinth.com/v2/tag/game_version');
+    const data = await res.json();
+    
+    mcVersionsCache = data
+        .filter(v => v.version_type === 'release' && isValidRelease(v.version) && isAtLeast1_20(v.version));
+        
+    mcVersionsCache.sort((a, b) => {
+        let pA = parseVersion(a.version);
+        let pB = parseVersion(b.version);
+        if (pB.maj !== pA.maj) return pB.maj - pA.maj;
+        if (pB.min !== pA.min) return pB.min - pA.min;
+        return pB.pat - pA.pat;
+    });
+
+    mcVersionsCache = mcVersionsCache.slice(0, 50); 
+    renderSidebar();
+}
+
+window.setLoader = (loader) => {
+    selectedLoader = loader;
+    document.getElementById('btn-ldr-fabric').classList.toggle('active', loader === 'fabric');
+    document.getElementById('btn-ldr-quilt').classList.toggle('active', loader === 'quilt');
+    document.getElementById('btn-ldr-neoforge').classList.toggle('active', loader === 'neoforge');
+    document.getElementById('btn-ldr-forge').classList.toggle('active', loader === 'forge');
+    evaluateAllMods();
+};
+
+window.setVersion = (version) => {
+    selectedTargetVersions = [version];
+    evaluateAllMods();
+};
+
+window.handleSearch = (e) => {
+    searchQuery = e.target.value.toLowerCase();
+    renderAll();
+};
+
+window.toggleDetails = (modId) => {
+    const details = document.getElementById(`details-${modId}`);
+    const iconBtn = document.getElementById(`btn-expand-${modId}`);
+    
+    if (details.classList.contains('expanded')) {
+        details.classList.remove('expanded');
+        iconBtn.classList.remove('expanded');
+    } else {
+        details.classList.add('expanded');
+        iconBtn.classList.add('expanded');
+    }
+};
+
+function renderSidebar() {
+    const totalValidMods = scannedMods.filter(m => m.apiData && m.apiData !== "ERROR").length;
+    let html = "";
+    let renderedVersions = new Set();
+
+    mcVersionsCache.forEach(cacheVer => {
+        if (renderedVersions.has(cacheVer.version)) return; 
+
+        let group = VERSION_GROUPS.find(g => g.versions.includes(cacheVer.version));
+        
+        if (group) {
+            html += `<div class="v-group-title">${group.name}</div>`;
+            let groupVersionsInCache = group.versions.filter(gv => mcVersionsCache.some(c => c.version === gv));
+            
+            groupVersionsInCache.sort((a, b) => {
+                let pA = parseVersion(a), pB = parseVersion(b);
+                if (pB.maj !== pA.maj) return pB.maj - pA.maj;
+                if (pB.min !== pA.min) return pB.min - pA.min;
+                return pB.pat - pA.pat;
+            });
+
+            groupVersionsInCache.forEach(gv => {
+                renderedVersions.add(gv);
+                html += generateSidebarButton(gv, totalValidMods);
+            });
+        } else {
+            html += `<div class="v-group-title">${cacheVer.version}</div>`;
+            renderedVersions.add(cacheVer.version);
+            html += generateSidebarButton(cacheVer.version, totalValidMods);
+        }
+    });
+
+    versionSelector.innerHTML = html;
+}
+
+function generateSidebarButton(versionName, totalValidMods) {
+    let compCount = 0;
+    if (totalValidMods > 0) {
+        compCount = scannedMods.filter(m => {
+            if (!m.apiData || m.apiData === "ERROR") return false;
+            let filteredData = m.apiData.filter(release => release.loaders.includes(selectedLoader));
+            return filteredData.some(release => release.game_versions.includes(versionName));
+        }).length;
+    }
+    
+    const pct = totalValidMods > 0 ? Math.round((compCount / totalValidMods) * 100) : 0;
+    let pctHtml = '';
+
+    if (totalValidMods > 0) {
+        let pctClass = '', emoji = '';
+        if (pct === 100) { pctClass = 'pct-green'; emoji = '⭐'; }
+        else if (pct >= 75) { pctClass = 'pct-green'; }
+        else if (pct >= 50) { pctClass = 'pct-yellow'; }
+        else if (pct >= 25) { pctClass = 'pct-orange'; }
+        else if (pct > 0) { pctClass = 'pct-red'; }
+        else { pctClass = 'pct-red'; emoji = '💀'; }
+        pctHtml = `<span class="pct ${pctClass}">${pct}% ${emoji}</span>`;
+    }
+
+    const isActive = selectedTargetVersions[0] === versionName;
+    return `
+        <button class="v-btn ${isActive ? 'active' : ''}" 
+                onclick="setVersion('${versionName}')">
+            <span>${versionName}</span> ${pctHtml}
+        </button>
+    `;
+}
+
+window.toggleSort = (mode) => {
+    if (currentSortMode === mode) {
+        if (mode === 'NAME') nameSortDir *= -1;
+        if (mode === 'COMP') compSortDir *= -1;
+    } else currentSortMode = mode;
+    renderAll();
+};
+
+window.toggleCatSort = (priority) => {
+    catSortDirs[priority] *= -1;
+    renderAll();
+};
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+});
+
+async function handleFiles(files) {
+    const fetchPromises = [];
+    
+    for (const file of files) {
+        if (file.name.endsWith('.jar')) {
+            const hash = await getFileHash(file);
+            const modData = await parseJar(file);
+            
+            if (modData) {
+                modData.fileHash = hash;
+                if (!scannedMods.find(m => m.fileHash === hash)) {
+                    modData.priority = PRIORITY.CHECKING;
+                    modData.statusHtml = `Fetching API...`;
+                    modData.apiData = null;
+                    modData.matchedRelease = null;
+                    scannedMods.push(modData);
+                    fetchPromises.push(fetchModData(modData));
+                }
+            } else {
+                scannedMods.push({
+                    id: file.name, name: file.name, version: "N/A",
+                    priority: PRIORITY.CHECKING, statusHtml: `<span class="badge red">Read Error</span>`, apiData: "ERROR"
+                });
+            }
+        } 
+        else if (file.name.endsWith('.mrpack')) {
+            const zip = new JSZip();
+            try {
+                const contents = await zip.loadAsync(file);
+                const indexFile = contents.file("modrinth.index.json");
+                
+                if (indexFile) {
+                    const rawData = await indexFile.async("string");
+                    const indexJson = JSON.parse(rawData);
+                    
+                    for (const modFile of indexJson.files) {
+                        const sha1 = modFile.hashes.sha1;
+                        const filename = modFile.path.split('/').pop() || "Unknown File";
+                        
+                        if (!scannedMods.find(m => m.fileHash === sha1)) {
+                            const modData = {
+                                id: sha1, 
+                                name: filename, 
+                                version: "mrpack",
+                                fileHash: sha1,
+                                priority: PRIORITY.CHECKING,
+                                statusHtml: `Fetching API...`,
+                                apiData: null,
+                                matchedRelease: null
+                            };
+                            scannedMods.push(modData);
+                            fetchPromises.push(fetchModData(modData));
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn(`Failed to parse mrpack ${file.name}:`, e);
+            }
+        }
+    }
+    renderAll(); 
+    await Promise.all(fetchPromises);
+    evaluateAllMods();
+}
+
+async function parseJar(file) {
+    const zip = new JSZip();
+    try {
+        const contents = await zip.loadAsync(file);
+        const fabricJson = contents.file("fabric.mod.json");
+        if (fabricJson) {
+            const rawData = await fabricJson.async("string");
+            const json = JSON.parse(rawData.replace(/[\x00-\x1F]/g, ""));
+            return { id: json.id, name: json.name || json.id, version: json.version };
+        }
+    } catch (e) { console.warn(`Parse error:`, e); }
+    return null;
+}
+
+async function fetchModData(mod) {
+    try {
+        let hashRes = await fetch(`https://api.modrinth.com/v2/version_file/${mod.fileHash}?algorithm=sha1`);
+        if (hashRes.ok) {
+            const hashData = await hashRes.json();
+            
+            if (mod.version === "mrpack") {
+                mod.version = hashData.version_number;
+                try {
+                    const projRes = await fetch(`https://api.modrinth.com/v2/project/${hashData.project_id}`);
+                    if (projRes.ok) {
+                        const projData = await projRes.json();
+                        mod.name = projData.title;
+                        mod.id = projData.slug;
+                    }
+                } catch(e) {}
+            }
+
+            const allRes = await fetch(`https://api.modrinth.com/v2/project/${hashData.project_id}/version`);
+            mod.apiData = await allRes.json();
+            return;
+        }
+
+        let projectId = mod.id;
+        let projectRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
+        
+        if (!projectRes.ok) {
+            const searchRes = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(mod.name)}&limit=5`);
+            const searchData = await searchRes.json();
+            
+            const exactHit = searchData.hits.find(hit => 
+                hit.slug.toLowerCase() === mod.id.toLowerCase() || 
+                hit.title.toLowerCase() === mod.name.toLowerCase()
+            );
+
+            if (exactHit) {
+                projectId = exactHit.project_id;
+            } else {
+                throw new Error("Strict match not found");
+            }
+        }
+        
+        const allRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`);
+        mod.apiData = await allRes.json();
+    } catch (e) {
+        mod.apiData = "ERROR";
+    }
+}
+
+function getLoaderVersionRanges(apiData) {
+    if (!apiData || apiData === "ERROR" || apiData.length === 0) return {};
+    let loaderVersions = { fabric: new Set(), quilt: new Set(), forge: new Set(), neoforge: new Set() };
+
+    apiData.forEach(release => {
+        release.loaders.forEach(l => {
+            if (loaderVersions[l]) {
+                release.game_versions.forEach(v => {
+                    if(isValidRelease(v) && isAtLeast1_20(v)) {
+                        loaderVersions[l].add(v);
+                    }
+                });
+            }
+        });
+    });
+
+    let ranges = {};
+    for (let l in loaderVersions) {
+        if (loaderVersions[l].size > 0) {
+            let parsed = Array.from(loaderVersions[l]).map(parseVersion);
+            let groups = {};
+            parsed.forEach(p => {
+                let key = `${p.maj}.${p.min}`;
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(p);
+            });
+
+            let allRanges = [];
+            for (let key in groups) {
+                let sorted = groups[key].sort((a, b) => a.pat - b.pat);
+                let start = sorted[0], prev = sorted[0];
+                for (let i = 1; i < sorted.length; i++) {
+                    let curr = sorted[i];
+                    if (curr.pat === prev.pat + 1) { prev = curr; }
+                    else {
+                        allRanges.push(start.original === prev.original ? start.original : `${start.original}–${prev.original}`);
+                        start = curr; prev = curr;
+                    }
+                }
+                allRanges.push(start.original === prev.original ? start.original : `${start.original}–${prev.original}`);
+            }
+            
+            allRanges.sort((a, b) => {
+                let pA = parseVersion(a.split('–')[0]), pB = parseVersion(b.split('–')[0]);
+                if (pA.maj !== pB.maj) return pA.maj - pB.maj;
+                if (pA.min !== pB.min) return pA.min - pB.min;
+                return pA.pat - pB.pat;
+            });
+            
+            ranges[l] = allRanges;
+        }
+    }
+    return ranges;
+}
+
+function getHighestVersion(versionsArray) {
+    if (!versionsArray || versionsArray.length === 0) return null;
+    return versionsArray.sort((a, b) => {
+        let pA = a.split('.').map(Number), pB = b.split('.').map(Number);
+        for(let i = 0; i < Math.max(pA.length, pB.length); i++) {
+            let nA = pA[i] || 0, nB = pB[i] || 0;
+            if (nA !== nB) return nB - nA; 
+        }
+        return 0;
+    })[0];
+}
+
+function getGroupForVersion(v) {
+    for (let g of VERSION_GROUPS) {
+        if (g.versions.includes(v)) return g.versions;
+    }
+    return [v]; 
+}
+
+function capitalize(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function evaluateAllMods() {
+    scannedMods.forEach(mod => {
+        if (mod.apiData === "ERROR") {
+            mod.priority = PRIORITY.NOT_FOUND;
+            mod.statusHtml = `<span class="badge red">Not on Modrinth / Error</span>`;
+            mod.matchedRelease = null;
+            return;
+        }
+        if (!mod.apiData) return; 
+
+        let filteredData = mod.apiData.filter(release => release.loaders.includes(selectedLoader));
+        const targetVersion = selectedTargetVersions[0];
+        const exactMatch = filteredData.find(release => release.game_versions.includes(targetVersion));
+
+        if (exactMatch) {
+            mod.priority = PRIORITY.GREEN;
+            mod.statusHtml = `<span class="badge green">Compatible: ${exactMatch.version_number}</span>`;
+            mod.matchedRelease = exactMatch;
+        } else if (filteredData.length > 0) {
+            let allGameVersions = new Set();
+            filteredData.forEach(release => {
+                release.game_versions.forEach(v => {
+                    if(isValidRelease(v) && isAtLeast1_20(v)) allGameVersions.add(v);
+                });
+            });
+
+            const targetGroup = getGroupForVersion(targetVersion);
+            const validSpoofVersions = Array.from(allGameVersions).filter(v => targetGroup.includes(v));
+            const latestMc = getHighestVersion(Array.from(allGameVersions)) || "Unknown";
+
+            if (validSpoofVersions.length > 0) {
+                const spoofAs = getHighestVersion(validSpoofVersions);
+                mod.priority = PRIORITY.YELLOW;
+                mod.statusHtml = `<span class="badge yellow">Mismatch: Spoof as ${spoofAs}</span>`;
+                mod.matchedRelease = filteredData.find(r => r.game_versions.includes(spoofAs));
+            } else {
+                mod.priority = PRIORITY.RED;
+                mod.statusHtml = `<span class="badge red">${targetVersion} is not supported</span>`;
+                mod.matchedRelease = filteredData[0]; 
+            }
+        } else {
+            mod.priority = PRIORITY.RED;
+            mod.statusHtml = `<span class="badge red">No ${capitalize(selectedLoader)} releases</span>`;
+            mod.matchedRelease = null;
+        }
+    });
+    renderSidebar(); 
+    renderAll();     
+}
+
+function updateStatsUI(list) {
+    const statsContainer = document.getElementById('detailed-stats');
+    if (list.length === 0) { statsContainer.style.display = 'none'; return; }
+    statsContainer.style.display = 'flex';
+    const total = list.length;
+    const comp = list.filter(m => m.priority === 1).length;
+    const mis = list.filter(m => m.priority === 2).length;
+    const inc = list.filter(m => m.priority === 3).length;
+    const nf = list.filter(m => m.priority === 4 || m.priority === 5).length;
+    statsContainer.innerHTML = `
+        <span class="stat-total">Total: ${total}</span>
+        <span class="stat-green">${comp} Compatible</span>
+        <span class="stat-yellow">${mis} Mismatch</span>
+        <span class="stat-red">${inc} Incompatible</span>
+        <span class="stat-gray">${nf} Not Found</span>
+    `;
+}
+
+function renderAll() {
+    modList.innerHTML = "";
+    let displayList = scannedMods.filter(mod => mod.name.toLowerCase().includes(searchQuery));
+    updateStatsUI(displayList);
+    
+    const btnName = document.getElementById('btn-sort-name'), btnComp = document.getElementById('btn-sort-comp');
+    btnName.className = `sort-btn ${currentSortMode === 'NAME' ? 'active' : ''}`;
+    btnName.innerText = `Name: ${nameSortDir === 1 ? 'A-Z' : 'Z-A'}`;
+    btnComp.className = `sort-btn ${currentSortMode === 'COMP' ? 'active' : ''}`;
+    btnComp.innerText = `Compatibility: ${compSortDir === 1 ? 'Best to Worst' : 'Worst to Best'}`;
+
+    if (currentSortMode === 'NAME') {
+        displayList.sort((a, b) => a.name.localeCompare(b.name) * nameSortDir);
+        displayList.forEach(mod => modList.innerHTML += generateModHTML(mod));
+    } else if (currentSortMode === 'COMP') {
+        const priorities = compSortDir === 1 ? [1, 2, 3, 4, 5] : [5, 4, 3, 2, 1];
+        priorities.forEach(p => {
+            let group = displayList.filter(m => m.priority === p);
+            if (group.length > 0) {
+                let catDir = catSortDirs[p];
+                group.sort((a, b) => a.name.localeCompare(b.name) * catDir);
+                modList.innerHTML += `
+                    <div class="category-header">
+                        <span>${PRIORITY_NAMES[p]} (${group.length})</span>
+                        <button class="cat-sort-btn" onclick="toggleCatSort(${p})">${catDir === 1 ? 'A-Z' : 'Z-A'}</button>
+                    </div>`;
+                group.forEach(mod => modList.innerHTML += generateModHTML(mod));
+            }
+        });
+    }
+}
+
+function generateModHTML(mod) {
+    let rangesHtml = '<span class="range-text">Loading...</span>';
+    let detailsHtml = '';
+    
+    if (mod.apiData && mod.apiData !== "ERROR") {
+        const loaderRanges = getLoaderVersionRanges(mod.apiData);
+        const loaders = Object.keys(loaderRanges).sort((a, b) => LOADER_SORT_ORDER[a] - LOADER_SORT_ORDER[b]);
+        
+        if (loaders.length > 0) {
+            rangesHtml = loaders.map(l => `
+                <div class="loader-range-row">
+                    <img src="${LOADER_FILES[l]}" alt="${capitalize(l)}" class="loader-img" title="${capitalize(l)}">
+                    <span class="loader-name-text"><strong>${capitalize(l)}:</strong></span>
+                    <div class="range-badges">
+                        ${loaderRanges[l].map(rangeText => `<span class="version-badge">${rangeText}</span>`).join('')}
+                    </div>
+                </div>
+            `).join('');
+        } else { 
+            rangesHtml = '<span class="range-text">No supported versions >= 1.20 found.</span>'; 
+        }
+
+        if (mod.matchedRelease) {
+            const rel = mod.matchedRelease;
+            const typeLetter = rel.version_type.charAt(0).toUpperCase();
+            const typeClass = `type-${rel.version_type}`;
+            const highestGV = getHighestVersion([...rel.game_versions]) || rel.game_versions[0];
+            
+            const platformHtml = rel.loaders.map(l => {
+                const color = LOADER_COLORS[l] || '#e0e0e0';
+                const icon = TINY_LOADER_FILES[l] || '';
+                return `
+                    <span class="platform-tag" style="color: ${color};">
+                        <span class="platform-icon" style="-webkit-mask: url(${icon}) no-repeat center / contain; mask: url(${icon}) no-repeat center / contain; background-color: ${color};"></span>
+                        ${capitalize(l)}
+                    </span>
+                `;
+            }).join('<span style="color: #9aa0a6; margin: 0 4px; font-weight: normal;">,</span> ');
+
+            const dateObj = new Date(rel.date_published);
+            const dateStr = dateObj.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+            const timeAgoStr = timeAgo(rel.date_published);
+            const dlStr = rel.downloads.toLocaleString();
+            
+            const primaryFile = rel.files.find(f => f.primary) || rel.files[0];
+            const directDownloadUrl = primaryFile ? primaryFile.url : '#';
+
+            detailsHtml = `
+                <div class="details-left">
+                    <span class="release-type-badge ${typeClass}" title="${capitalize(rel.version_type)}">${typeLetter}</span>
+                    
+                    <div class="detail-col">
+                        <span class="detail-label">Name</span>
+                        <span class="detail-val">${rel.version_number}<br><span style="font-size: 0.75rem; color: #9aa0a6;">${rel.name}</span></span>
+                    </div>
+
+                    <div class="detail-col">
+                        <span class="detail-label">Game version:</span>
+                        <span class="detail-val">${highestGV}</span>
+                    </div>
+
+                    <div class="detail-col">
+                        <span class="detail-label">Platform:</span>
+                        <span class="detail-val">${platformHtml}</span>
+                    </div>
+
+                    <div class="detail-col">
+                        <span class="detail-label">Published</span>
+                        <span class="detail-val">${dateStr} <span style="color: #9aa0a6;">(${timeAgoStr})</span></span>
+                    </div>
+                    
+                    <div class="detail-col">
+                        <span class="detail-label">Downloads:</span>
+                        <span class="detail-val">${dlStr}</span>
+                    </div>
+                </div>
+                <div class="details-right">
+                    <a href="${directDownloadUrl}" class="download-btn">
+                        <span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download
+                    </a>
+                </div>
+            `;
+        } else {
+            detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">No matching version found on Modrinth.</div>`;
+        }
+    } else if (mod.apiData === "ERROR") { 
+        rangesHtml = '<span class="range-text">N/A</span>'; 
+        detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">Error connecting to Modrinth API.</div>`;
+    }
+
+    const safeId = mod.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    return `
+        <div class="mod-item m3-card" id="mod-${safeId}" style="display: flex; flex-direction: column;">
+            <div class="mod-top-row" style="display: flex; justify-content: space-between; width: 100%;">
+                <div class="mod-info">
+                    <div class="mod-header"><strong>${mod.name}</strong></div>
+                    <span class="version-text">Local Version: ${mod.version}</span>
+                    <div class="ranges-container">
+                        <span class="ranges-title">Supported Version Ranges:</span>
+                        ${rangesHtml}
+                    </div>
+                </div>
+                <div class="status-col" style="display: flex; align-items: center; gap: 12px; height: 100%;">
+                    <div class="status">${mod.statusHtml}</div>
+                    <button class="expand-icon-btn" id="btn-expand-${safeId}" onclick="toggleDetails('${safeId}')" title="View Details">
+                        <span class="material-symbols-outlined">expand_more</span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="mod-details" id="details-${safeId}">
+                ${detailsHtml}
+            </div>
+        </div>`;
+}
+
+loadMcVersions();
