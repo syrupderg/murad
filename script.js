@@ -16,7 +16,7 @@ let catSortDirs = { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 };
 let searchQuery = "";
 
 let pendingOverrideDataStr = "";
-let projectNameCache = {}; // Cache to store Modrinth project names
+let projectNameCache = {}; 
 
 const PRIORITY = { GREEN: 1, YELLOW: 2, RED: 3, NOT_FOUND: 4, CHECKING: 5 };
 const PRIORITY_NAMES = {
@@ -393,7 +393,6 @@ async function parseJar(file) {
         if (fabricJson) {
             const rawData = await fabricJson.async("string");
             const json = JSON.parse(rawData.replace(/[\x00-\x1F]/g, ""));
-            // Removed local fallback dependency checking here
             return { id: json.id, name: json.name || json.id, version: json.version };
         }
     } catch (e) { console.warn(`Parse error:`, e); }
@@ -617,7 +616,6 @@ function updateStatsUI(list) {
         return; 
     }
 
-    // --- Main Mod Stats ---
     statsContainer.style.display = 'flex';
     statsContainer.innerHTML = `
         <span class="stat-total">Total Mods: ${list.length}</span>
@@ -627,7 +625,6 @@ function updateStatsUI(list) {
         <span class="stat-gray">${list.filter(m => m.priority === 4 || m.priority === 5).length} Not Found</span>
     `;
 
-    // --- Unique Dependency Stats (using Sets to filter duplicates) ---
     let uniqueReq = new Set();
     let uniqueOpt = new Set();
     let uniqueInc = new Set();
@@ -648,7 +645,6 @@ function updateStatsUI(list) {
     const totalOpt = uniqueOpt.size;
     const totalInc = uniqueInc.size;
 
-    // --- NEW: Calculate Missing Required Dependencies ---
     let missingReqCount = 0;
     uniqueReq.forEach(reqId => {
         const name = projectNameCache[reqId] || reqId;
@@ -662,16 +658,14 @@ function updateStatsUI(list) {
         }
     });
 
-    // Format the text so it only shows "(n Missing)" if there are actually missing dependencies
     const reqText = missingReqCount > 0 
         ? `${totalReq} Required (${missingReqCount} Missing)` 
         : `${totalReq} Required`;
 
-    // Only show the dependency stats bar if there are actually dependencies to report
     if (totalReq > 0 || totalOpt > 0 || totalInc > 0) {
         depsStatsContainer.style.display = 'flex';
         depsStatsContainer.innerHTML = `
-            <span class="stat-total">Unique Dependencies: ${totalReq + totalOpt + totalInc}</span>
+            <span class="stat-total">Total Dependencies: ${totalReq + totalOpt + totalInc}</span>
             <span style="color: #ff9800; font-weight: bold; display: flex; align-items: center; gap: 4px;">
                 <span class="material-symbols-outlined" style="font-size: 14px;">error</span> ${reqText}
             </span>
@@ -722,13 +716,11 @@ function generateModHTML(mod) {
     let rangesHtml = '<span class="range-text">Loading...</span>';
     let detailsHtml = '';
     
-    // --- DEPENDENCY PROCESSING (API Only) ---
     let hasRequiredDeps = false;
     let hasOptionalDeps = false;
     let hasIncompatibleDeps = false;
     let depsHtml = '';
 
-    // Variables to track if the dependencies are currently loaded in the workspace
     let allReqLoaded = false;
     let anyOptLoaded = false;
     let anyIncLoaded = false;
@@ -739,7 +731,6 @@ function generateModHTML(mod) {
         const optDeps = deps.filter(d => d.dependency_type === 'optional');
         const incDeps = deps.filter(d => d.dependency_type === 'incompatible');
         
-        // Helper function to check if a specific dependency is loaded in MURAD
         const isDepLoaded = (d) => {
             if (!d.project_id) return false;
             const name = projectNameCache[d.project_id] || d.project_id;
@@ -752,15 +743,15 @@ function generateModHTML(mod) {
 
         if (reqDeps.length > 0) {
             hasRequiredDeps = true;
-            allReqLoaded = reqDeps.every(isDepLoaded); // MUST have all required
+            allReqLoaded = reqDeps.every(isDepLoaded); 
         }
         if (optDeps.length > 0) {
             hasOptionalDeps = true;
-            anyOptLoaded = optDeps.some(isDepLoaded); // Only need at least one suggested
+            anyOptLoaded = optDeps.some(isDepLoaded); 
         }
         if (incDeps.length > 0) {
             hasIncompatibleDeps = true;
-            anyIncLoaded = incDeps.some(isDepLoaded); // Bad if ANY incompatible is loaded
+            anyIncLoaded = incDeps.some(isDepLoaded); 
         }
 
         const formatApiDeps = (depList, type, color, icon) => {
@@ -781,7 +772,6 @@ function generateModHTML(mod) {
                             
                             const isLoaded = isDepLoaded(d);
                             
-                            // Visuals for badges: Green tick for normal, Red warning for incompatible
                             const loadedIconType = (type === 'Incompatible') ? 'warning' : 'check_circle';
                             const loadedIconColor = (type === 'Incompatible') ? '#ff5252' : '#1BD96A';
                             
@@ -817,7 +807,6 @@ function generateModHTML(mod) {
             `;
         }
     }
-    // ---------------------------------
 
     if (mod.apiData && mod.apiData !== "ERROR") {
         const loaderRanges = getLoaderVersionRanges(mod.apiData);
@@ -900,11 +889,9 @@ function generateModHTML(mod) {
 
     const safeId = mod.id.replace(/[^a-zA-Z0-9_-]/g, '_');
     
-    // --- Generate Main Dependency Status Icons ---
     let depIconsHtml = '';
     
     if (hasRequiredDeps) {
-        // NEW: Apply a green background badge if all required are loaded
         const bgStyle = allReqLoaded ? `background: rgba(27, 217, 106, 0.1); border: 1px solid rgba(27, 217, 106, 0.4); padding: 2px 6px; border-radius: 8px;` : `padding: 2px 0;`;
         const tick = allReqLoaded ? `<span class="material-symbols-outlined" style="font-size: 20px; color: #1BD96A; margin-left: 2px;">check_circle</span>` : '';
         
@@ -912,7 +899,6 @@ function generateModHTML(mod) {
     }
     
     if (hasOptionalDeps) {
-        // NEW: Apply a green background badge if any suggested are loaded
         const bgStyle = anyOptLoaded ? `background: rgba(27, 217, 106, 0.1); border: 1px solid rgba(27, 217, 106, 0.4); padding: 2px 6px; border-radius: 8px;` : `padding: 2px 0;`;
         const tick = anyOptLoaded ? `<span class="material-symbols-outlined" style="font-size: 20px; color: #1BD96A; margin-left: 2px;">check_circle</span>` : '';
         
@@ -920,7 +906,6 @@ function generateModHTML(mod) {
     }
     
     if (hasIncompatibleDeps) {
-        // NEW: Apply a red background badge if an incompatible mod is loaded!
         const bgStyle = anyIncLoaded ? `background: rgba(255, 82, 82, 0.1); border: 1px solid rgba(255, 82, 82, 0.4); padding: 2px 6px; border-radius: 8px;` : `padding: 2px 0;`;
         const warn = anyIncLoaded ? `<span class="material-symbols-outlined" style="font-size: 20px; color: #ff5252; margin-left: 2px;">warning</span>` : '';
         
