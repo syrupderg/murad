@@ -44,6 +44,74 @@
                 <button class="sort-btn active" id="btn-sort-comp" onclick="toggleSort('COMP')">Compatibility: Best to Worst</button>
                 
                 <div id="detailed-stats" class="detailed-stats"></div>
+
+                <div style="display: flex; flex-direction: column; gap: 8px; margin-left: auto;">
+                    <div id="detailed-stats" class="detailed-stats"></div>
+                    <div id="detailed-stats-deps" class="detailed-stats"></div>
+                </div>
+            </div>
+
+            <div class="action-bars-row">
+                
+                <div id="download-pack-bar" class="m3-card override-bar" style="display: none; border-color: rgba(27, 217, 106, 0.3); background: rgba(27, 217, 106, 0.05); flex-direction: column;">
+                    <div class="override-header" style="gap: 15px; display: grid;">
+                        <div class="override-info">
+                            <span class="material-symbols-outlined" style="color: #1BD96A; margin-top: 2px;">inventory_2</span>
+                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                <span>Ready to pack <strong id="pack-count">0</strong> mods for <strong id="pack-version"></strong>.</span>
+                            </div>
+                        </div>
+                        <div class="download-controls-wrapper">
+                            <div class="download-controls">
+                                <button class="download-override-btn btn-green" id="btn-download-zip" onclick="downloadModPack('zip')">
+                                    <span class="material-symbols-outlined" style="font-size: 18px;">folder_zip</span> Download as .ZIP
+                                </button>
+                                <button class="download-override-btn btn-green" id="btn-download-mrpack" onclick="downloadModPack('mrpack')">
+                                    <span class="material-symbols-outlined" style="font-size: 18px;">inventory_2</span> Download as .MRPACK
+                                </button>
+                            </div>
+                            <label class="exclude-checkbox-label">
+                                <input type="checkbox" id="exclude-kinda-checkbox" onchange="renderAll()"> 
+                                Exclude "Kinda Compatible"
+                            </label>
+                            <div id="pack-warning" class="pack-warning" style="display: none; margin-left: 0; width: fit-content;">
+                                    <span class="material-symbols-outlined" style="font-size: 16px;">error</span>
+                                    <span id="incompatible-count">0</span> incompatible mods excluded!
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="pack-mod-list" class="pack-mod-list"></div>
+
+                    <div id="download-progress-area" class="download-progress-area">
+                        <div class="progress-text" id="download-status-text">Waiting to download...</div>
+                        <div class="progress-track">
+                            <div id="download-progress-bar" class="progress-fill"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="override-bar" class="m3-card override-bar" style="display: none; flex-direction: column;">
+                    <div class="override-header">
+                        <div class="override-info">
+                            <span class="material-symbols-outlined" style="color: #fbc02d;">warning</span>
+                            <span>Bypass version locks for <strong id="override-count">0</strong> mods.</span>
+                        </div>
+                    </div>
+                    <div id="override-preview-area" class="override-preview-area" style="top: 10px; position: relative; border-top: none;">
+                        <div class="preview-instructions">
+                            <p style="font-size: 0.8rem; margin-bottom: 15px; text-align: center;">Place in: <strong><code>.minecraft/config/fabric_loader_dependencies.json</code></strong></p>
+                        </div>
+                        <div class="preview-actions">
+                            <button class="download-override-btn" style="background: #fbc02d; color: #000;" onclick="downloadOverrideFile()">
+                                <span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download JSON
+                            </button>
+                        </div>
+                        <pre><code id="override-json-preview"></code></pre>
+                        
+                    </div>
+                </div>
+                
             </div>
 
             <div id="mod-list" class="m3-list"></div>
