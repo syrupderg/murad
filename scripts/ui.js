@@ -78,7 +78,7 @@ export function renderSidebar() {
             let pctClass = "", emoji = "";
             if (pct === 100) {
                 pctClass = "pct-green";
-                emoji = "✅";
+                emoji = "✨";
             } else if (pct >= 75) {
                 pctClass = "pct-green";
             } else if (pct >= 50) {
@@ -89,7 +89,7 @@ export function renderSidebar() {
                 pctClass = "pct-red";
             } else {
                 pctClass = "pct-red";
-                emoji = "❌";
+                emoji = "💀";
             }
             pctHtml = `<span class="pct ${pctClass}">${pct}% ${emoji}</span>`;
         }
