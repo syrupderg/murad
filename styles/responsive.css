@@ -1,0 +1,158 @@
+@media (max-width: 900px) {
+    .app-container {
+        display: flex;
+        flex-direction: column;
+        height: auto;
+        min-height: 100vh;
+        padding: 12px;
+        overflow-x: hidden;
+    }
+
+    .workspace {
+        display: contents;
+    }
+
+    header {
+        order: 1;
+        text-align: center;
+    }
+    #drop-zone {
+        order: 2;
+        margin-top: 10px;
+    }
+
+    .version-sidebar {
+        order: 3;
+        border-radius: 24px !important;
+        margin: 16px 0 !important;
+        max-height: 400px;
+        overflow-y: auto;
+        border: 1px solid var(--mc-border);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    }
+
+    .stats-row {
+        order: 4;
+    }
+    .controls-bar {
+        order: 5;
+    }
+    .action-bars-row {
+        order: 6;
+    }
+    #mod-list {
+        order: 7;
+    }
+
+    header h1 {
+        font-size: 1.6rem;
+        line-height: 1.2;
+        margin-bottom: 8px;
+    }
+    header p {
+        font-size: 0.9rem;
+    }
+
+    .controls-bar {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 16px;
+    }
+
+    .search-container {
+        width: 100%;
+        margin: 0;
+        box-sizing: border-box;
+    }
+
+    .sort-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .action-bars-row > .override-bar {
+        min-width: 0;
+        width: 100%;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+
+    #override-bar .override-info,
+    #download-pack-bar .override-info {
+        flex-wrap: wrap;
+        text-align: center;
+    }
+
+    .override-preview-area pre,
+    .pack-mod-list {
+        overflow-x: auto;
+        max-width: 100%;
+        box-sizing: border-box;
+    }
+
+    .download-controls-wrapper,
+    .download-controls {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .download-override-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .mod-top-row {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 12px;
+    }
+
+    .status-col {
+        width: 100%;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        align-items: center;
+        border-top: 1px solid #2a2a2a;
+        padding-top: 12px;
+        margin-top: 4px;
+    }
+
+    .details-top-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 20px;
+    }
+
+    .details-left {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+        width: 100%;
+    }
+
+    .details-right {
+        width: 100%;
+        display: flex;
+        gap: 10px;
+    }
+
+    .details-right .download-btn {
+        flex: 1;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .ranges-container {
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    .loader-range-row {
+        flex-wrap: wrap;
+    }
+
+    .range-badges {
+        margin-top: 4px;
+    }
+}

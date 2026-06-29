@@ -1,0 +1,99 @@
+:root {
+    --m3-surface: #121212;
+    --m3-on-surface: #e6e1e5;
+    --m3-primary: #388e3c;
+    --m3-container: #1e1e1e;
+    --mc-border: #333333;
+}
+
+body {
+    background-color: #050505;
+    color: var(--m3-on-surface);
+    font-family: "Roboto", sans-serif;
+    margin: 0;
+}
+
+.pixel-text {
+    font-family: "Courier New", Courier, monospace;
+    color: var(--m3-primary);
+    text-transform: uppercase;
+    letter-spacing: 2px;
+}
+
+.app-container {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    height: 100vh;
+}
+
+.workspace {
+    padding: 40px;
+    overflow-y: auto;
+}
+
+.m3-card {
+    background: var(--m3-surface);
+    border: 1px solid var(--mc-border);
+    border-radius: 28px;
+    padding: 20px;
+    margin-bottom: 16px;
+    transition:
+        transform 0.2s,
+        background-color 0.2s;
+}
+
+#drop-zone {
+    border: 2px dashed var(--m3-primary);
+    text-align: center;
+    cursor: pointer;
+    background: #0a0a0a;
+}
+
+#drop-zone.dragover {
+    background: #1a2b1a;
+    border-color: #4caf50;
+}
+
+.search-container {
+    display: flex;
+    align-items: center;
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid var(--mc-border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    margin-right: auto;
+    min-width: 250px;
+    transition: 0.2s;
+}
+
+.search-container:focus-within {
+    border-color: var(--m3-primary);
+    background: rgba(0, 0, 0, 0.3);
+}
+
+.search-container input {
+    background: transparent;
+    border: none;
+    color: var(--m3-on-surface);
+    outline: none;
+    padding: 6px 8px;
+    width: 100%;
+    font-family: inherit;
+    font-size: 0.9rem;
+}
+
+.search-icon {
+    color: #9aa0a6;
+    font-size: 20px;
+}
+
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.spin-animation {
+    display: inline-block;
+    animation: spin 1.5s linear infinite;
+}

@@ -1,0 +1,96 @@
+.radar-background {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: -1;
+    overflow: hidden;
+    opacity: 0.1;
+    mix-blend-mode: screen;
+}
+
+.radar-circle {
+    position: absolute;
+    bottom: -100vmax;
+    left: -100vmax;
+    width: 200vmax;
+    height: 200vmax;
+    border-radius: 50%;
+    border: 1px solid rgba(27, 217, 106, 0.5);
+    background: repeating-radial-gradient(transparent, transparent 9.5%, rgba(27, 217, 106, 0.25) 10%),
+        linear-gradient(90deg, transparent 49.9%, rgba(27, 217, 106, 0.4) 50%, transparent 50.1%),
+        linear-gradient(0deg, transparent 49.9%, rgba(27, 217, 106, 0.4) 50%, transparent 50.1%);
+}
+
+.radar-sweep {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, rgba(27, 217, 106, 0.9) 0deg, transparent 55deg, transparent 360deg);
+    animation: radar-spin 10s linear infinite;
+}
+
+.radar-blip {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background-color: #1bd96a;
+    box-shadow:
+        0 0 15px #1bd96a,
+        0 0 3px #ffffff inset;
+    border-radius: 1px;
+}
+
+.blip-1 {
+    top: 25%;
+    right: 35%;
+    animation: blip-flash 10s infinite 1.2s;
+}
+.blip-2 {
+    top: 40%;
+    right: 15%;
+    animation: blip-flash 10s infinite 3.5s;
+}
+.blip-3 {
+    top: 10%;
+    right: 45%;
+    animation: blip-flash 10s infinite 0.5s;
+}
+.blip-4 {
+    top: 35%;
+    right: 40%;
+    animation: blip-flash 10s infinite 2s;
+}
+
+@keyframes radar-spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes blip-flash {
+    0%,
+    100% {
+        opacity: 0;
+        transform: scale(0.5);
+    }
+    2% {
+        opacity: 1;
+        transform: scale(1.3);
+    }
+    10% {
+        opacity: 0.6;
+        transform: scale(1);
+    }
+    35% {
+        opacity: 0;
+    }
+}

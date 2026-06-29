@@ -2,13 +2,27 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MURAD</title>
-    <link rel="stylesheet" href="style.css">
+    
+    <link rel="stylesheet" href="styles/base.css">
+    <link rel="stylesheet" href="styles/radar.css">
+    <link rel="stylesheet" href="styles/sidebar.css">
+    <link rel="stylesheet" href="styles/mods.css">
+    <link rel="stylesheet" href="styles/actions.css">
+    <link rel="stylesheet" href="styles/loading.css">
+    <link rel="stylesheet" href="styles/responsive.css">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" />
 </head>
 <body class="dark-mode">
+
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="spinner"></div>
+        <div class="loading-text">Processing Files...</div>
+    </div>
 
     <div class="radar-background">
         <div class="radar-circle">
@@ -24,101 +38,96 @@
         <main class="workspace">
             <header>
                 <h1>MURAD - Mod Update <span class="pixel-text">RADAR</span></h1>
-                <p>Drop your JARs to check compatibility</p>
+                <p>Drop your JARs, ZIPs, or MRPACKs to check compatibility</p>
             </header>
 
             <div id="drop-zone" class="m3-card">
-                <span class="material-symbols-outlined">upload_file</span>
-                <p>Drag & Drop JARs or .mrpack files</p>
-                <input type="file" id="file-input" multiple accept=".jar,.mrpack" hidden>
+                <span class="material-symbols-outlined" style="font-size: 48px; color: var(--m3-primary); margin-bottom: 10px;">upload_file</span>
+                <h2>Drag & Drop your mods here</h2>
+                <p style="color: #9aa0a6;">Supports .jar, .zip, .mrpack, .tar, .tar.gz</p>
+                <input type="file" id="file-input" multiple accept=".jar,.zip,.mrpack,.tar,.tar.gz,.tgz" style="display: none;">
+            </div>
+
+            <div class="stats-row">
+                <div id="detailed-stats" class="detailed-stats" style="display: none;"></div>
+                <div id="detailed-stats-deps" class="detailed-stats" style="display: none;"></div>
             </div>
 
             <div class="controls-bar m3-card">
                 <div class="search-container">
                     <span class="material-symbols-outlined search-icon">search</span>
-                    <input type="text" id="search-bar" placeholder="Search mods..." oninput="handleSearch(event)">
+                    <input type="text" placeholder="Search mods..." onkeyup="handleSearch(event)">
                 </div>
-
-                <span style="font-weight: bold;">Sort by:</span>
-                <button class="sort-btn" id="btn-sort-name" onclick="toggleSort('NAME')">Name: A-Z</button>
-                <button class="sort-btn active" id="btn-sort-comp" onclick="toggleSort('COMP')">Compatibility: Best to Worst</button>
-                
-                <div id="detailed-stats" class="detailed-stats"></div>
-
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-left: auto;">
-                    <div id="detailed-stats" class="detailed-stats"></div>
-                    <div id="detailed-stats-deps" class="detailed-stats"></div>
-                </div>
+                <button id="btn-sort-name" class="sort-btn" onclick="toggleSort('NAME')">Name: A-Z</button>
+                <button id="btn-sort-comp" class="sort-btn active" onclick="toggleSort('COMP')">Compatibility: Best to Worst</button>
             </div>
 
             <div class="action-bars-row">
                 
-                <div id="download-pack-bar" class="m3-card override-bar" style="display: none; border-color: rgba(27, 217, 106, 0.3); background: rgba(27, 217, 106, 0.05); flex-direction: column;">
-                    <div class="override-header" style="gap: 15px; display: grid;">
-                        <div class="override-info">
-                            <span class="material-symbols-outlined" style="color: #1BD96A; margin-top: 2px;">inventory_2</span>
-                            <div style="display: flex; flex-direction: column; gap: 6px;">
-                                <span>Ready to pack <strong id="pack-count">0</strong> mods for <strong id="pack-version"></strong>.</span>
-                            </div>
-                        </div>
-                        <div class="download-controls-wrapper">
-                            <div class="download-controls">
-                                <button class="download-override-btn btn-green" id="btn-download-zip" onclick="downloadModPack('zip')">
-                                    <span class="material-symbols-outlined" style="font-size: 18px;">folder_zip</span> Download as .ZIP
-                                </button>
-                                <button class="download-override-btn btn-green" id="btn-download-mrpack" onclick="downloadModPack('mrpack')">
-                                    <span class="material-symbols-outlined" style="font-size: 18px;">inventory_2</span> Download as .MRPACK
-                                </button>
-                            </div>
-                            <label class="exclude-checkbox-label">
-                                <input type="checkbox" id="exclude-kinda-checkbox" onchange="renderAll()"> 
-                                Exclude "Kinda Compatible"
-                            </label>
-                            <div id="pack-warning" class="pack-warning" style="display: none; margin-left: 0; width: fit-content;">
-                                    <span class="material-symbols-outlined" style="font-size: 16px;">error</span>
-                                    <span id="incompatible-count">0</span> incompatible mod(s) are excluded!
-                            </div>
+                <div id="download-pack-bar" class="m3-card override-bar" style="display: none; border-color: rgba(27, 217, 106, 0.3); background: rgba(27, 217, 106, 0.05);">
+                    <div class="override-header">
+                        <span style="font-weight: bold; color: #1BD96A; font-size: 1.1rem;">Export Modpack</span>
+                    </div>
+                    <div class="override-info">
+                        <span class="material-symbols-outlined" style="color: #1BD96A;">check_circle</span>
+                        <span><strong id="pack-count">0</strong> mods ready for <strong id="pack-version">1.21.1</strong></span>
+                        <span id="pack-warning" class="pack-warning" style="display: none;">
+                            <span class="material-symbols-outlined" style="font-size: 16px;">error</span>
+                            <span id="incompatible-count">0</span> Incompatible
+                        </span>
+                    </div>
+                    <div class="download-controls-wrapper">
+                        <label class="exclude-checkbox-label" title="Skip 'Kinda Compatible' mods that might need tweaks to work.">
+                            <input type="checkbox" id="exclude-kinda-checkbox" onchange="renderAll()"> 
+                            Exclude "Kinda Compatible" Mods
+                        </label>
+                        <div class="download-controls">
+                            <button id="btn-download-mrpack" class="download-override-btn btn-green" onclick="downloadModPack('mrpack')">
+                                <span class="material-symbols-outlined" style="font-size: 18px;">inventory_2</span> Export .mrpack
+                            </button>
+                            <button id="btn-download-zip" class="download-override-btn btn-green" onclick="downloadModPack('zip')">
+                                <span class="material-symbols-outlined" style="font-size: 18px;">folder_zip</span> Download .zip
+                            </button>
                         </div>
                     </div>
-
-                    <div id="pack-mod-list" class="pack-mod-list"></div>
-
-                    <div id="download-progress-area" class="download-progress-area">
-                        <div class="progress-text" id="download-status-text">Waiting to download...</div>
+                    <div class="download-progress-area">
+                        <span id="download-status-text" class="progress-text">Waiting to download...</span>
                         <div class="progress-track">
                             <div id="download-progress-bar" class="progress-fill"></div>
                         </div>
                     </div>
+                    <div id="pack-mod-list" class="pack-mod-list"></div>
                 </div>
 
-                <div id="override-bar" class="m3-card override-bar" style="display: none; flex-direction: column;">
+                <div id="override-bar" class="m3-card override-bar" style="display: none;">
                     <div class="override-header">
-                        <div class="override-info">
-                            <span class="material-symbols-outlined" style="color: #fbc02d;">warning</span>
-                            <span>Bypass version locks for <strong id="override-count">0</strong> mods.</span>
-                        </div>
+                        <span style="font-weight: bold; color: #fbc02d; font-size: 1.1rem;">Fabric/Quilt Dependency Override</span>
                     </div>
-                    <div id="override-preview-area" class="override-preview-area" style="top: 10px; position: relative; border-top: none;">
+                    <div class="override-info">
+                        <span class="material-symbols-outlined" style="color: #fbc02d;">warning</span>
+                        Found <strong id="override-count">0</strong> "Kinda Compatible" mods.
+                    </div>
+                    <div class="override-preview-area">
                         <div class="preview-instructions">
-                            <p style="font-size: 0.8rem; margin-bottom: 15px; text-align: center;">Create and place the code in: <strong><code>.minecraft/config/fabric_loader_dependencies.json</code></strong></p>
+                            <p>Download this JSON file to trick these mods into working.</p>
+                            <p>Place it in your config folder: <span class="path-example">.minecraft/config/fabric_loader_dependencies.json</span></p>
                         </div>
-                        <div class="preview-actions">
-                            <button class="download-override-btn" style="background: #fbc02d; color: #000;" onclick="downloadOverrideFile()">
+                        <pre><code id="override-json-preview"></code></pre>
+                        <div class="preview-actions" style="margin-top: 12px;">
+                            <button class="download-override-btn" onclick="downloadOverrideFile()">
                                 <span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download JSON
                             </button>
                         </div>
-                        <pre><code id="override-json-preview"></code></pre>
-                        
                     </div>
                 </div>
                 
             </div>
-
-            <div id="mod-list" class="m3-list"></div>
+            
+            <div id="mod-list" class="m3-list" style="margin-top: 16px;"></div>
         </main>
 
         <aside class="version-sidebar m3-card">
-            <h3>Target Loader</h3>
+            <h3 style="margin-top: 0;">Target Loader</h3>
             <div class="sidebar-loader-toggles">
                 <button id="btn-ldr-fabric" class="tgl-btn active" onclick="setLoader('fabric')">Fabric</button>
                 <button id="btn-ldr-quilt" class="tgl-btn" onclick="setLoader('quilt')">Quilt</button>
@@ -128,10 +137,11 @@
 
             <h3>Target Version</h3>
             <div id="version-selector" class="v-list">
-                <div class="loading-spinner">Loading Manifest...</div>
+                <div style="color: #9aa0a6; text-align: center; margin-top: 20px;">Loading Manifest...</div>
             </div>
         </aside>
     </div>
-    <script src="script.js"></script>
+    
+    <script type="module" src="scripts/main.js"></script>
 </body>
 </html>

@@ -1,0 +1,211 @@
+.action-bars-row {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+    width: 100%;
+}
+
+.override-bar {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    background: rgba(249, 168, 37, 0.1);
+    border: 1px solid rgba(249, 168, 37, 0.3);
+    gap: 12px;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.action-bars-row > .override-bar {
+    flex: 1;
+    min-width: 300px;
+}
+
+.override-bar .override-header {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+#override-bar .override-info,
+#download-pack-bar .override-info {
+    justify-content: center;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #e0e0e0;
+    font-size: 0.9rem;
+}
+
+.download-override-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #fbc02d;
+    color: #000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85rem;
+    transition: 0.2s;
+}
+
+.download-override-btn:hover {
+    background: #f9a825;
+}
+
+.override-preview-area {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+.override-preview-area pre {
+    margin-top: 16px;
+    background: #121212;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    overflow-y: auto;
+    flex-grow: 1;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #a6accd;
+    font-family: monospace;
+}
+
+.preview-instructions p {
+    font-size: 0.9rem;
+    color: #e0e0e0;
+    margin: 0 0 6px 0;
+    line-height: 1.4;
+}
+.preview-instructions code {
+    background: #1e1e1e;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #fbc02d;
+}
+.path-example {
+    font-size: 0.8rem !important;
+    color: #9aa0a6 !important;
+}
+.preview-actions {
+    text-align: center;
+}
+
+.download-controls-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+.download-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.exclude-checkbox-label {
+    font-size: 0.8rem;
+    color: #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.pack-warning {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #ff5252;
+    background: rgba(255, 82, 82, 0.1);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    margin-left: 8px;
+    border: 1px solid rgba(255, 82, 82, 0.3);
+}
+
+.btn-green {
+    background: #1bd96a !important;
+    color: #000 !important;
+}
+.btn-green:hover {
+    background: #17b95a !important;
+}
+.btn-green:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.download-progress-area {
+    width: 100%;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed rgba(27, 217, 106, 0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.progress-text {
+    font-size: 0.85rem;
+    color: #e0e0e0;
+    font-family: monospace;
+    white-space: nowrap;
+}
+.progress-track {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    height: 8px;
+    overflow: hidden;
+}
+.progress-fill {
+    width: 0%;
+    height: 100%;
+    background: #1bd96a;
+    transition: width 0.2s ease;
+}
+
+.pack-mod-list {
+    margin-top: 12px;
+    background: #121212;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #333;
+    overflow-y: auto;
+    flex: 1;
+    max-height: 265px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: #a6accd;
+    font-family: monospace;
+}
+
+.pack-mod-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px dashed #333;
+    padding-bottom: 4px;
+}
+
+.pack-mod-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
