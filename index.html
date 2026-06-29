@@ -22,6 +22,10 @@
     <div id="loading-overlay" class="loading-overlay" style="display: none;">
         <div class="spinner"></div>
         <div class="loading-text">Processing Files...</div>
+        
+        <div class="global-progress-track" id="loading-progress-track" style="display: none;">
+            <div class="global-progress-fill" id="loading-progress-bar"></div>
+        </div>
     </div>
 
     <div class="radar-background">
@@ -109,15 +113,18 @@
                     </div>
                     <div class="override-preview-area">
                         <div class="preview-instructions">
-                            <p>Download this JSON file to trick these mods into working.</p>
-                            <p>Place it in your config folder: <span class="path-example">.minecraft/config/fabric_loader_dependencies.json</span></p>
-                        </div>
-                        <pre><code id="override-json-preview"></code></pre>
-                        <div class="preview-actions" style="margin-top: 12px;">
+                            </div>
+                        
+                        <div class="preview-actions">
                             <button class="download-override-btn" onclick="downloadOverrideFile()">
-                                <span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download JSON
+                                <span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download File
+                            </button>
+                            <button class="download-override-btn btn-secondary" onclick="copyOverrideData(this)">
+                                <span class="material-symbols-outlined" style="font-size: 18px;">content_copy</span> Copy Code
                             </button>
                         </div>
+
+                        <pre id="override-json-preview"></pre>
                     </div>
                 </div>
                 
@@ -129,10 +136,27 @@
         <aside class="version-sidebar m3-card">
             <h3 style="margin-top: 0;">Target Loader</h3>
             <div class="sidebar-loader-toggles">
-                <button id="btn-ldr-fabric" class="tgl-btn active" onclick="setLoader('fabric')">Fabric</button>
-                <button id="btn-ldr-quilt" class="tgl-btn" onclick="setLoader('quilt')">Quilt</button>
-                <button id="btn-ldr-neoforge" class="tgl-btn" onclick="setLoader('neoforge')">NeoForge</button>
-                <button id="btn-ldr-forge" class="tgl-btn" onclick="setLoader('forge')">Forge</button>
+                <button id="btn-ldr-fabric" class="tgl-btn active" onclick="setLoader('fabric')">
+                    <img src="icons/fabric.svg" alt="Fabric" class="btn-loader-icon"> <span>Fabric</span>
+                </button>
+                <button id="btn-ldr-quilt" class="tgl-btn" onclick="setLoader('quilt')">
+                    <img src="icons/quilt.svg" alt="Quilt" class="btn-loader-icon"> <span>Quilt</span>
+                </button>
+                <button id="btn-ldr-neoforge" class="tgl-btn" onclick="setLoader('neoforge')">
+                    <img src="icons/neoforge.svg" alt="NeoForge" class="btn-loader-icon"> <span>NeoForge</span>
+                </button>
+                <button id="btn-ldr-forge" class="tgl-btn" onclick="setLoader('forge')">
+                    <img src="icons/forge.svg" alt="Forge" class="btn-loader-icon"> <span>Forge</span>
+                </button>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px; margin: 15px 0; font-size: 0.85rem; color: #b0b5ba;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="toggle-snapshots" onchange="toggleSnapshots(event)"> Include Snapshots
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="toggle-older" onchange="toggleOlderVersions(event)"> Show Older Versions (&lt; 1.20)
+                </label>
             </div>
 
             <h3>Target Version</h3>

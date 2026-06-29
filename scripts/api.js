@@ -1,20 +1,28 @@
-import { state, isValidRelease, parseVersion, isAtLeast1_20 } from "./utils.js";
+import { state, isVersionAllowed } from "./utils.js";
 import { renderSidebar } from "./ui.js";
 
 export async function loadMcVersions() {
-    const res = await fetch("https://api.modrinth.com/v2/tag/game_version");
-    const data = await res.json();
-    state.mcVersionsCache = data.filter(
-        (v) => v.version_type === "release" && isValidRelease(v.version) && isAtLeast1_20(v.version)
-    );
-    state.mcVersionsCache.sort((a, b) => {
-        let pA = parseVersion(a.version),
-            pB = parseVersion(b.version);
-        if (pB.maj !== pA.maj) return pB.maj - pA.maj;
-        if (pB.min !== pA.min) return pB.min - pA.min;
-        return pB.pat - pA.pat;
+    try {
+        const res = await fetch("https://api.modrinth.com/v2/tag/game_version");
+        const data = await res.json();
+        
+        data.sort((a, b) => new Date(b.date) - new Date(a.date));
+        state.rawMcVersions = data;
+        
+        updateVersionsCache();
+    } catch (e) {
+        console.error("Failed to load MC versions", e);
+    }
+}
+
+export function updateVersionsCache() {
+    state.mcVersionsCache = state.rawMcVersions.filter((v) => {
+        if (!isVersionAllowed(v.version)) return false;
+        if (!state.includeSnapshots && v.version_type !== "release") return false;
+
+        return true;
     });
-    state.mcVersionsCache = state.mcVersionsCache.slice(0, 50);
+
     renderSidebar();
 }
 
@@ -43,7 +51,6 @@ export async function fetchModData(mod) {
             if (projRes.ok) {
                 const projData = await projRes.json();
                 mod.project_type = projData.project_type;
-
                 if (mod.version === "mrpack" || mod.version === "Unknown") {
                     mod.name = projData.title;
                     mod.id = projData.slug;
@@ -53,10 +60,8 @@ export async function fetchModData(mod) {
             mod.apiData = await allRes.json();
             return;
         }
-
         let projectId = mod.id;
         let projectRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
-
         if (!projectRes.ok) {
             const searchRes = await fetch(
                 `https://api.modrinth.com/v2/search?query=${encodeURIComponent(mod.name)}&limit=5`
@@ -74,12 +79,10 @@ export async function fetchModData(mod) {
             }
             projectRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
         }
-
         if (projectRes.ok) {
             const projData = await projectRes.json();
             mod.project_type = projData.project_type;
         }
-
         const allRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`);
         mod.apiData = await allRes.json();
     } catch (e) {

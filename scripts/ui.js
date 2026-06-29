@@ -2,7 +2,6 @@ import {
     state,
     PRIORITY,
     PRIORITY_NAMES,
-    VERSION_GROUPS,
     LOADER_FILES,
     TINY_LOADER_FILES,
     LOADER_COLORS,
@@ -12,6 +11,7 @@ import {
     capitalize,
     getHighestVersion,
     getLoaderVersionRanges,
+    getGroupForVersion
 } from "./utils.js";
 
 export function renderSidebar() {
@@ -21,85 +21,95 @@ export function renderSidebar() {
     const totalValidMods = state.scannedMods.filter((m) => m.apiData && m.apiData !== "ERROR").length;
     let html = "";
     let renderedVersions = new Set();
+    let groupedHtml = {};
+    let groupOrder = [];
+
+    const versionSupportCounts = {};
+    if (totalValidMods > 0) {
+        state.scannedMods.forEach((m) => {
+            if (!m.apiData || m.apiData === "ERROR") return;
+            
+            let handledVersions = new Set();
+            
+            if (m.priority === PRIORITY.RESOURCE_SHADER) {
+                m.apiData.forEach(release => {
+                    release.game_versions.forEach(v => handledVersions.add(v));
+                });
+            } else {
+                let filteredData = m.apiData.filter(release => release.loaders.includes(state.selectedLoader));
+                filteredData.forEach(release => {
+                    release.game_versions.forEach(v => handledVersions.add(v));
+                });
+            }
+            
+            handledVersions.forEach(v => {
+                versionSupportCounts[v] = (versionSupportCounts[v] || 0) + 1;
+            });
+        });
+    }
 
     state.mcVersionsCache.forEach((cacheVer) => {
         if (renderedVersions.has(cacheVer.version)) return;
-        let group = VERSION_GROUPS.find((g) => g.versions.includes(cacheVer.version));
-        if (group) {
-            html += `<div class="v-group-title">${group.name}</div>`;
-            let groupVersionsInCache = group.versions.filter((gv) =>
-                state.mcVersionsCache.some((c) => c.version === gv)
-            );
-            groupVersionsInCache.sort((a, b) => {
-                let pA = parseVersion(a),
-                    pB = parseVersion(b);
-                if (pB.maj !== pA.maj) return pB.maj - pA.maj;
-                if (pB.min !== pA.min) return pB.min - pA.min;
-                return pB.pat - pA.pat;
-            });
-            groupVersionsInCache.forEach((gv) => {
-                renderedVersions.add(gv);
-                html += generateSidebarButton(gv, totalValidMods);
-            });
-        } else {
-            html += `<div class="v-group-title">${cacheVer.version}</div>`;
-            renderedVersions.add(cacheVer.version);
-            html += generateSidebarButton(cacheVer.version, totalValidMods);
-        }
-    });
-    versionSelector.innerHTML = html;
-}
+        renderedVersions.add(cacheVer.version);
 
-function generateSidebarButton(versionName, totalValidMods) {
-    let compCount = 0;
-    if (totalValidMods > 0) {
-        compCount = state.scannedMods.filter((m) => {
-            if (!m.apiData || m.apiData === "ERROR") return false;
-            if (m.priority === PRIORITY.RESOURCE_SHADER) return true;
-            let filteredData = m.apiData.filter((release) => release.loaders.includes(state.selectedLoader));
-            return filteredData.some((release) => release.game_versions.includes(versionName));
-        }).length;
-    }
-    const pct = totalValidMods > 0 ? Math.round((compCount / totalValidMods) * 100) : 0;
-    let pctHtml = "";
-    if (totalValidMods > 0) {
-        let pctClass = "",
-            emoji = "";
-        if (pct === 100) {
-            pctClass = "pct-green";
-            emoji = "⭐";
-        } else if (pct >= 75) {
-            pctClass = "pct-green";
-        } else if (pct >= 50) {
-            pctClass = "pct-yellow";
-        } else if (pct >= 25) {
-            pctClass = "pct-orange";
-        } else if (pct > 0) {
-            pctClass = "pct-red";
-        } else {
-            pctClass = "pct-red";
-            emoji = "💀";
+        let groupName = getGroupForVersion(cacheVer.version);
+
+        if (!groupedHtml[groupName]) {
+            groupedHtml[groupName] = [];
+            groupOrder.push(groupName); 
         }
-        pctHtml = `<span class="pct ${pctClass}">${pct}% ${emoji}</span>`;
+
+        groupedHtml[groupName].push(generateSidebarButton(cacheVer.version, totalValidMods, versionSupportCounts));
+    });
+
+    groupOrder.forEach((groupName) => {
+        html += `<div class="v-group-title">${groupName}</div>`;
+        html += groupedHtml[groupName].join("");
+    });
+
+    versionSelector.innerHTML = html;
+
+    function generateSidebarButton(versionName, totalValidMods, supportMap) {
+        let compCount = supportMap[versionName] || 0;
+        
+        const pct = totalValidMods > 0 ? Math.round((compCount / totalValidMods) * 100) : 0;
+        let pctHtml = "";
+        if (totalValidMods > 0) {
+            let pctClass = "", emoji = "";
+            if (pct === 100) {
+                pctClass = "pct-green";
+                emoji = "✅";
+            } else if (pct >= 75) {
+                pctClass = "pct-green";
+            } else if (pct >= 50) {
+                pctClass = "pct-yellow";
+            } else if (pct >= 25) {
+                pctClass = "pct-orange";
+            } else if (pct > 0) {
+                pctClass = "pct-red";
+            } else {
+                pctClass = "pct-red";
+                emoji = "❌";
+            }
+            pctHtml = `<span class="pct ${pctClass}">${pct}% ${emoji}</span>`;
+        }
+        const isActive = state.selectedTargetVersions[0] === versionName;
+        return `
+            <button class="v-btn ${isActive ? "active" : ""}" onclick="setVersion('${versionName}')">
+                <span>${versionName}</span> ${pctHtml}
+            </button>
+        `;
     }
-    const isActive = state.selectedTargetVersions[0] === versionName;
-    return `
-        <button class="v-btn ${isActive ? "active" : ""}" onclick="setVersion('${versionName}')">
-            <span>${versionName}</span> ${pctHtml}
-        </button>
-    `;
 }
 
 export function updateStatsUI(list) {
     const statsContainer = document.getElementById("detailed-stats");
     const depsStatsContainer = document.getElementById("detailed-stats-deps");
-
     if (list.length === 0) {
         statsContainer.style.display = "none";
         depsStatsContainer.style.display = "none";
         return;
     }
-
     statsContainer.style.display = "flex";
     statsContainer.innerHTML = `
         <span class="stat-total">Total Mods: ${list.length}</span>
@@ -109,11 +119,9 @@ export function updateStatsUI(list) {
         <span style="color: #448aff; font-weight: bold;">${list.filter((m) => m.priority === 6).length} Cosmetics</span>
         <span class="stat-gray">${list.filter((m) => m.priority === 4 || m.priority === 5).length} Not Found</span>
     `;
-
     let uniqueReq = new Set();
     let uniqueOpt = new Set();
     let uniqueInc = new Set();
-
     list.forEach((mod) => {
         if (mod.matchedRelease && mod.matchedRelease.dependencies) {
             mod.matchedRelease.dependencies.forEach((d) => {
@@ -124,11 +132,9 @@ export function updateStatsUI(list) {
             });
         }
     });
-
     const totalReq = uniqueReq.size;
     const totalOpt = uniqueOpt.size;
     const totalInc = uniqueInc.size;
-
     let missingReqCount = 0;
     uniqueReq.forEach((reqId) => {
         const name = state.projectNameCache[reqId] || reqId;
@@ -139,9 +145,7 @@ export function updateStatsUI(list) {
             missingReqCount++;
         }
     });
-
     const reqText = missingReqCount > 0 ? `${totalReq} Required (${missingReqCount} Missing)` : `${totalReq} Required`;
-
     if (totalReq > 0 || totalOpt > 0 || totalInc > 0) {
         depsStatsContainer.style.display = "flex";
         depsStatsContainer.innerHTML = `
@@ -164,18 +168,14 @@ export function updateStatsUI(list) {
 export function updateOverrideBar(list) {
     const overrideBar = document.getElementById("override-bar");
     if (!overrideBar) return;
-
     const countEl = document.getElementById("override-count");
     const kindaCompMods = list.filter((m) => m.priority === 2 && m.name.toLowerCase().includes(state.searchQuery));
-
     if (kindaCompMods.length > 0) {
         overrideBar.style.display = "flex";
         countEl.innerText = kindaCompMods.length;
-
         let headerText = "";
         let instructionsHtml = "";
         let codeContent = "";
-
         if (state.selectedLoader === "fabric" || state.selectedLoader === "quilt") {
             headerText = "Fabric/Quilt Dependency Override";
             instructionsHtml = `
@@ -187,7 +187,6 @@ export function updateOverrideBar(list) {
                 overrides[mod.id] = { "-depends": { minecraft: "IGNORED" } };
             });
             codeContent = JSON.stringify({ version: 1, overrides: overrides }, null, 4);
-
             state.pendingOverrideFileName = "fabric_loader_dependencies.json";
             state.pendingOverrideDataStr = "data:text/json;charset=utf-8," + encodeURIComponent(codeContent);
         } else {
@@ -197,23 +196,18 @@ export function updateOverrideBar(list) {
                 <p>Place it in your config folder: <span class="path-example">.minecraft/config/fml.toml</span></p>
                 <p style="color: #ffb74d; font-size: 0.8rem; margin-top: 6px;">⚠️ <strong>Note:</strong> If fml.toml already exists in your config folder, copy the block below into your existing file instead of overwriting it.</p>
             `;
-
             let tomlLines = ["[dependencyOverrides]"];
             kindaCompMods.forEach((mod) => {
                 tomlLines.push(`"${mod.id}" = ["-minecraft"]`);
             });
             codeContent = tomlLines.join("\n");
-
             state.pendingOverrideFileName = "fml.toml";
             state.pendingOverrideDataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(codeContent);
         }
-
         const headerEl = overrideBar.querySelector(".override-header span");
         if (headerEl) headerEl.innerText = headerText;
-
         const instructionsEl = overrideBar.querySelector(".preview-instructions");
         if (instructionsEl) instructionsEl.innerHTML = instructionsHtml;
-
         document.getElementById("override-json-preview").innerText = codeContent;
     } else {
         overrideBar.style.display = "none";
@@ -230,7 +224,6 @@ export function updateDownloadPackBar(list) {
         return false;
     });
     const incompatibleMods = list.filter((m) => m.priority === 3);
-
     if (validMods.length > 0) {
         downloadBar.style.display = "flex";
         document.getElementById("pack-count").innerText = validMods.length;
@@ -261,19 +254,16 @@ export function updateDownloadPackBar(list) {
 export function renderAll() {
     const modList = document.getElementById("mod-list");
     if (!modList) return;
-
     let displayList = state.scannedMods.filter((mod) => mod.name.toLowerCase().includes(state.searchQuery));
     updateStatsUI(displayList);
     updateOverrideBar(state.scannedMods);
     updateDownloadPackBar(displayList);
-
     const btnName = document.getElementById("btn-sort-name"),
         btnComp = document.getElementById("btn-sort-comp");
     btnName.className = `sort-btn ${state.currentSortMode === "NAME" ? "active" : ""}`;
     btnName.innerText = `Name: ${state.nameSortDir === 1 ? "A-Z" : "Z-A"}`;
     btnComp.className = `sort-btn ${state.currentSortMode === "COMP" ? "active" : ""}`;
     btnComp.innerText = `Compatibility: ${state.compSortDir === 1 ? "Best to Worst" : "Worst to Best"}`;
-
     let htmlBuilder = "";
     if (state.currentSortMode === "NAME") {
         displayList.sort((a, b) => a.name.localeCompare(b.name) * state.nameSortDir);
@@ -304,7 +294,6 @@ export function renderAll() {
 function generateModHTML(mod) {
     let rangesHtml = '<span class="range-text">Loading...</span>';
     let detailsHtml = "";
-
     let hasRequiredDeps = false,
         hasOptionalDeps = false,
         hasIncompatibleDeps = false;
@@ -312,13 +301,11 @@ function generateModHTML(mod) {
         anyOptLoaded = false,
         anyIncLoaded = false;
     let depsHtml = "";
-
     if (mod.matchedRelease && mod.matchedRelease.dependencies && mod.matchedRelease.dependencies.length > 0) {
         const deps = mod.matchedRelease.dependencies;
         const reqDeps = deps.filter((d) => d.dependency_type === "required");
         const optDeps = deps.filter((d) => d.dependency_type === "optional");
         const incDeps = deps.filter((d) => d.dependency_type === "incompatible");
-
         const isDepLoaded = (d) => {
             if (!d.project_id) return false;
             const name = state.projectNameCache[d.project_id] || d.project_id;
@@ -329,7 +316,6 @@ function generateModHTML(mod) {
                     m.id === name
             );
         };
-
         if (reqDeps.length > 0) {
             hasRequiredDeps = true;
             allReqLoaded = reqDeps.every(isDepLoaded);
@@ -342,7 +328,6 @@ function generateModHTML(mod) {
             hasIncompatibleDeps = true;
             anyIncLoaded = incDeps.some(isDepLoaded);
         }
-
         const formatApiDeps = (depList, type, color, icon) => {
             if (depList.length === 0) return "";
             const extraStyle = type === "Incompatible" ? "width: 113px;" : "";
@@ -362,7 +347,6 @@ function generateModHTML(mod) {
                                 const loadedIcon = isLoaded
                                     ? `<span class="material-symbols-outlined" style="font-size: 14px; margin-left: 4px; color: ${loadedIconColor};" title="Already loaded in MURAD">${loadedIconType}</span>`
                                     : "";
-
                                 let loadedStyle = "";
                                 if (isLoaded) {
                                     loadedStyle =
@@ -370,7 +354,6 @@ function generateModHTML(mod) {
                                             ? `border-color: rgba(255, 82, 82, 0.4); background: rgba(255, 82, 82, 0.1);`
                                             : `border-color: rgba(27, 217, 106, 0.4); background: rgba(27, 217, 106, 0.1);`;
                                 }
-
                                 const tooltipText = isLoaded ? `Already loaded in MURAD!` : `View on Modrinth`;
                                 return `<a href="https://modrinth.com/mod/${d.project_id}" target="_blank" class="dep-badge clickable-dep" title="${tooltipText}" style="text-decoration:none; ${loadedStyle}">
                                 ${name}${loadedIcon}
@@ -381,21 +364,18 @@ function generateModHTML(mod) {
                 </div>
             `;
         };
-
         const reqHtml = formatApiDeps(reqDeps, "Required", "#ff9800", "error");
         const optHtml = formatApiDeps(optDeps, "Optional", "#448aff", "lightbulb_2");
         const incHtml = formatApiDeps(incDeps, "Incompatible", "#ff5252", "dangerous");
-
         if (reqHtml || optHtml || incHtml) {
             depsHtml = `
                 <div class="dependencies-container">
-                    <span class="detail-label" style="display:dangerous; margin-bottom: 8px;">Dependencies</span>
+                    <span class="detail-label" style="display:block; margin-bottom: 8px;">Dependencies</span>
                     ${reqHtml}${optHtml}${incHtml}
                 </div>
             `;
         }
     }
-
     if (mod.apiData && mod.apiData !== "ERROR") {
         const loaderRanges = getLoaderVersionRanges(mod.apiData);
         const loaders = Object.keys(loaderRanges).sort(
@@ -423,14 +403,12 @@ function generateModHTML(mod) {
         } else {
             rangesHtml = '<span class="range-text">No supported versions >= 1.20 found.</span>';
         }
-
         if (mod.matchedRelease) {
             const rel = mod.matchedRelease;
             const typeLetter = rel.version_type.charAt(0).toUpperCase();
             const typeClass = `type-${rel.version_type}`;
             const highestGV = getHighestVersion([...rel.game_versions]) || rel.game_versions[0];
             const allowedLoaders = ["fabric", "quilt", "forge", "neoforge", "iris", "optifine"];
-
             const platformHtml = rel.loaders
                 .filter((l) => allowedLoaders.includes(l.toLowerCase()))
                 .map((l) => {
@@ -438,7 +416,6 @@ function generateModHTML(mod) {
                     const isOptifine = l.toLowerCase() === "optifine";
                     const color = LOADER_COLORS[l] || "#448aff";
                     const icon = TINY_LOADER_FILES[l] || "";
-
                     let textStyle = "";
                     if (isOptifine) {
                         textStyle = `background: linear-gradient(180deg, #FFC526, #DC7722); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold;`;
@@ -447,7 +424,6 @@ function generateModHTML(mod) {
                     } else {
                         textStyle = `color: ${color};`;
                     }
-
                     let iconStyle = "";
                     if (isIris && icon) {
                         iconStyle = `background: url(${icon}) no-repeat center / contain;`;
@@ -462,9 +438,7 @@ function generateModHTML(mod) {
                             : `background-color: ${color};`;
                         iconStyle = `${bgRule} border-radius: 50%; padding: 2px;`;
                     }
-
                     const displayName = isIris ? "Iris Shaders" : capitalize(l);
-
                     return `
                         <span class="platform-tag">
                             <span class="platform-icon" style="${iconStyle}"></span>
@@ -473,14 +447,12 @@ function generateModHTML(mod) {
                     `;
                 })
                 .join("");
-
             const dateObj = new Date(rel.date_published);
             const dateStr = dateObj.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
             const timeAgoStr = timeAgo(rel.date_published);
             const dlStr = rel.downloads.toLocaleString();
             const primaryFile = rel.files.find((f) => f.primary) || rel.files[0];
             const directDownloadUrl = primaryFile ? primaryFile.url : "#";
-
             detailsHtml = `
                 <div class="details-top-row">
                     <div class="details-left">
@@ -505,10 +477,8 @@ function generateModHTML(mod) {
         rangesHtml = '<span class="range-text">N/A</span>';
         detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">Error connecting to Modrinth API.</div>`;
     }
-
     const safeId = mod.id.replace(/[^a-zA-Z0-9_-]/g, "_");
     let depIconsHtml = "";
-
     if (hasRequiredDeps) {
         const bgStyle = allReqLoaded
             ? `background: rgba(27, 217, 106, 0.1); border: 1px solid rgba(27, 217, 106, 0.4); padding: 2px 6px; border-radius: 8px;`
@@ -518,7 +488,6 @@ function generateModHTML(mod) {
             : "";
         depIconsHtml += `<div style="display: flex; align-items: center; cursor: help; ${bgStyle}" title="${allReqLoaded ? "All required mods loaded!" : "Requires other mods"}"><span class="material-symbols-outlined" style="font-size: 20px; color: #ff9800;">error</span>${tick}</div>`;
     }
-
     if (hasOptionalDeps) {
         const bgStyle = anyOptLoaded
             ? `background: rgba(27, 217, 106, 0.1); border: 1px solid rgba(27, 217, 106, 0.4); padding: 2px 6px; border-radius: 8px;`
@@ -528,7 +497,6 @@ function generateModHTML(mod) {
             : "";
         depIconsHtml += `<div style="display: flex; align-items: center; cursor: help; ${bgStyle}" title="${anyOptLoaded ? "Suggested mod(s) loaded!" : "Has suggested mods"}"><span class="material-symbols-outlined" style="font-size: 20px; color: #448aff;">lightbulb_2</span>${tick}</div>`;
     }
-
     if (hasIncompatibleDeps) {
         const bgStyle = anyIncLoaded
             ? `background: rgba(255, 82, 82, 0.1); border: 1px solid rgba(255, 82, 82, 0.4); padding: 2px 6px; border-radius: 8px;`
@@ -538,12 +506,10 @@ function generateModHTML(mod) {
             : "";
         depIconsHtml += `<div style="display: flex; align-items: center; cursor: help; ${bgStyle}" title="${anyIncLoaded ? "WARNING: Incompatible mod is loaded!" : "Has incompatible mods"}"><span class="material-symbols-outlined" style="font-size: 20px; color: #ff5252;">dangerous</span>${warn}</div>`;
     }
-
     let depIconsContainer =
         depIconsHtml !== ""
             ? `<div style="display: flex; gap: 8px; align-items: center; margin-right: 4px;">${depIconsHtml}</div>`
             : "";
-
     return `
         <div class="mod-item m3-card" id="mod-${safeId}" style="display: flex; flex-direction: column;">
             <div class="mod-top-row" style="display: flex; justify-content: space-between; width: 100%;">
@@ -567,4 +533,45 @@ function generateModHTML(mod) {
                 ${detailsHtml}
             </div>
         </div>`;
+}
+
+export function updateLoaderButtons() {
+    const currentVersion = state.selectedTargetVersions[0];
+    if (!currentVersion) return;
+
+    const validMods = state.scannedMods.filter((m) => m.apiData && m.apiData !== "ERROR");
+    const totalValidMods = validMods.length;
+    const loaders = ["fabric", "quilt", "neoforge", "forge"];
+    
+    loaders.forEach((loader) => {
+        const btn = document.getElementById(`btn-ldr-${loader}`);
+        if (!btn) return;
+        
+        const displayTitle = loader === "neoforge" ? "NeoForge" : capitalize(loader);
+
+        if (totalValidMods === 0) {
+            btn.innerHTML = `<img src="icons/${loader}.svg" alt="${displayTitle}" class="btn-loader-icon"> <span>${displayTitle}</span>`;
+            return;
+        }
+        
+        let compCount = validMods.filter((m) => {
+            if (m.project_type === "resourcepack" || m.project_type === "shader") {
+                return m.apiData.some(r => r.game_versions.includes(currentVersion));
+            } else {
+                let filteredData = m.apiData.filter(r => r.loaders.includes(loader));
+                return filteredData.some(r => r.game_versions.includes(currentVersion));
+            }
+        }).length;
+        
+        const pct = Math.round((compCount / totalValidMods) * 100);
+        
+        let pctClass = "";
+        if (pct === 100) pctClass = "pct-green";
+        else if (pct >= 75) pctClass = "pct-green";
+        else if (pct >= 50) pctClass = "pct-yellow";
+        else if (pct >= 25) pctClass = "pct-orange";
+        else pctClass = "pct-red";
+        
+        btn.innerHTML = `<img src="icons/${loader}.svg" alt="${displayTitle}" class="btn-loader-icon"> <span>${displayTitle}</span> <span class="pct ${pctClass}">${pct}%</span>`;
+    });
 }

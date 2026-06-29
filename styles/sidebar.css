@@ -99,7 +99,7 @@
     font-weight: bold;
 }
 
-.v-btn .pct {
+.v-btn .pct, .tgl-btn .pct {
     font-size: 0.8rem;
     padding: 2px 6px;
     border-radius: 6px;
@@ -189,19 +189,51 @@
     background: var(--m3-container);
     color: var(--m3-on-surface);
     border: 1px solid var(--mc-border);
-    padding: 8px;
+    padding: 8px 12px;
     border-radius: 8px;
     cursor: pointer;
     font-family: inherit;
     transition: 0.2s;
     font-size: 0.85rem;
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    position: relative;
+    min-height: 38px;
 }
 
+.tgl-btn:hover {
+    background: #2a2a2a;
+}
 .tgl-btn.active {
     background: var(--m3-primary);
     color: white;
     font-weight: bold;
     border-color: var(--m3-primary);
+}
+
+.btn-loader-icon {
+    position: absolute;
+    left: 10px;
+    width: 25px;
+    height: 25px;
+    object-fit: contain;
+}
+
+.v-btn .pct, .tgl-btn .pct {
+    font-size: 0.8rem;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.tgl-btn .pct {
+    position: absolute;
+    right: 8px;
 }
 
 .v-group-title {

@@ -60,20 +60,30 @@
     background: #f9a825;
 }
 
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: #e0e0e0;
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
 .override-preview-area {
     display: flex;
     flex-direction: column;
     flex-grow: 1;
 }
+
 .override-preview-area pre {
-    margin-top: 16px;
+    margin-top: 0;
     background: #121212;
     padding: 12px;
     border-radius: 8px;
     border: 1px solid #333;
     overflow-y: auto;
     flex-grow: 1;
-    max-height: none;
+    max-height: 265px;
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -88,18 +98,26 @@
     margin: 0 0 6px 0;
     line-height: 1.4;
 }
+
 .preview-instructions code {
     background: #1e1e1e;
     padding: 2px 6px;
     border-radius: 4px;
     color: #fbc02d;
 }
+
 .path-example {
     font-size: 0.8rem !important;
     color: #9aa0a6 !important;
 }
+
 .preview-actions {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 12px;
+    margin-bottom: 8px;
 }
 
 .download-controls-wrapper {
@@ -108,6 +126,7 @@
     align-items: center;
     gap: 15px;
 }
+
 .download-controls {
     display: flex;
     align-items: center;
@@ -142,9 +161,11 @@
     background: #1bd96a !important;
     color: #000 !important;
 }
+
 .btn-green:hover {
     background: #17b95a !important;
 }
+
 .btn-green:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -166,6 +187,7 @@
     font-family: monospace;
     white-space: nowrap;
 }
+
 .progress-track {
     width: 100%;
     background: rgba(255, 255, 255, 0.1);
@@ -173,6 +195,7 @@
     height: 8px;
     overflow: hidden;
 }
+
 .progress-fill {
     width: 0%;
     height: 100%;

@@ -4,33 +4,62 @@ import {
     capitalize,
     getFileHash,
     getHighestVersion,
-    isValidRelease,
-    isAtLeast1_20,
+    isVersionAllowed,
     getGroupForVersion,
     extractTarArchive,
 } from "./utils.js";
-import { loadMcVersions, parseJar, fetchModData } from "./api.js";
-import { renderSidebar, renderAll } from "./ui.js";
+import { loadMcVersions, parseJar, fetchModData, updateVersionsCache } from "./api.js";
+import { renderSidebar, renderAll, updateLoaderButtons } from "./ui.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
 
+window.renderAll = renderAll;
+
+function showLoadingAndUpdate(textMessage = "Processing...") {
+    const loadingOverlay = document.getElementById("loading-overlay");
+    const loadingText = document.querySelector(".loading-text");
+    const progressTrack = document.getElementById("loading-progress-track");
+    
+    if (loadingOverlay && loadingText) {
+        loadingText.innerText = textMessage;
+        loadingOverlay.style.display = "flex";
+        if (progressTrack) progressTrack.style.display = "none"; 
+    }
+
+    setTimeout(async () => {
+        updateVersionsCache();
+        await evaluateAllMods();
+        
+        if (loadingOverlay) {
+            loadingOverlay.style.display = "none";
+            loadingText.innerText = "Processing Files..."; 
+        }
+    }, 50);
+}
 window.setLoader = (loader) => {
     state.selectedLoader = loader;
     document.getElementById("btn-ldr-fabric").classList.toggle("active", loader === "fabric");
     document.getElementById("btn-ldr-quilt").classList.toggle("active", loader === "quilt");
     document.getElementById("btn-ldr-neoforge").classList.toggle("active", loader === "neoforge");
     document.getElementById("btn-ldr-forge").classList.toggle("active", loader === "forge");
-    setTimeout(() => {
-        evaluateAllMods();
-    }, 10);
+    
+    showLoadingAndUpdate("Switching Loader...");
+};
+
+window.toggleSnapshots = (e) => {
+    state.includeSnapshots = e.target.checked;
+    showLoadingAndUpdate("Loading Snapshots...");
+};
+
+window.toggleOlderVersions = (e) => {
+    state.showOlderVersions = e.target.checked;
+    showLoadingAndUpdate("Loading Older Versions...");
 };
 
 window.setVersion = (version) => {
     state.selectedTargetVersions = [version];
-    setTimeout(() => {
-        evaluateAllMods();
-    }, 10);
+    showLoadingAndUpdate("Evaluating Mods...");
 };
 
 window.handleSearch = (e) => {
@@ -79,6 +108,29 @@ window.downloadOverrideFile = () => {
     downloadNode.remove();
 };
 
+window.copyOverrideData = async (btnElement) => {
+    const textToCopy = document.getElementById("override-json-preview").innerText;
+    
+    try {
+        await navigator.clipboard.writeText(textToCopy);
+        
+        const originalHtml = btnElement.innerHTML;
+        
+        btnElement.innerHTML = `<span class="material-symbols-outlined" style="font-size: 18px;">check</span> Copied!`;
+        btnElement.style.background = "#1bd96a";
+        btnElement.style.color = "#000";
+        
+        setTimeout(() => {
+            btnElement.innerHTML = originalHtml;
+            btnElement.style.background = ""; 
+            btnElement.style.color = "";
+        }, 2000);
+        
+    } catch (err) {
+        console.error("Failed to copy:", err);
+    }
+};
+
 window.downloadModPack = async (format) => {
     const excludeKinda = document.getElementById("exclude-kinda-checkbox")?.checked;
     const filteredList = state.scannedMods.filter((m) => m.name.toLowerCase().includes(state.searchQuery));
@@ -88,20 +140,15 @@ window.downloadModPack = async (format) => {
         if (m.priority === 2 && !excludeKinda) return true;
         return false;
     });
-
     if (validMods.length === 0) return;
-
     const btnZip = document.getElementById("btn-download-zip");
     const btnMrpack = document.getElementById("btn-download-mrpack");
     const progressBar = document.getElementById("download-progress-bar");
     const statusText = document.getElementById("download-status-text");
-
     if (btnZip) btnZip.disabled = true;
     if (btnMrpack) btnMrpack.disabled = true;
     progressBar.style.width = "0%";
-
     const zip = new JSZip();
-
     if (format === "mrpack") {
         statusText.innerText = "Building Modrinth Modpack Metadata (.mrpack)...";
         progressBar.style.width = "50%";
@@ -115,7 +162,6 @@ window.downloadModPack = async (format) => {
             files: [],
         };
         indexJson.dependencies[safeLoader] = "*";
-
         for (const mod of validMods) {
             const rel = mod.matchedRelease;
             const primaryFile = rel.files.find((f) => f.primary) || rel.files[0];
@@ -130,7 +176,6 @@ window.downloadModPack = async (format) => {
         }
         zip.file("modrinth.index.json", JSON.stringify(indexJson, null, 4));
         progressBar.style.width = "100%";
-
         zip.generateAsync({ type: "blob" }).then(function (content) {
             const downloadNode = document.createElement("a");
             downloadNode.href = URL.createObjectURL(content);
@@ -166,7 +211,6 @@ window.downloadModPack = async (format) => {
             completed++;
             progressBar.style.width = `${(completed / validMods.length) * 100}%`;
         }
-
         statusText.innerText = "Building ZIP archive... This may take a moment.";
         zip.generateAsync({ type: "blob" }).then(function (content) {
             const downloadNode = document.createElement("a");
@@ -188,21 +232,16 @@ window.downloadModPack = async (format) => {
 
 function autoSelectBestEnvironment() {
     if (state.scannedMods.length === 0 || state.mcVersionsCache.length === 0) return;
-
     let bestLoader = state.selectedLoader;
     let bestVersion = state.selectedTargetVersions[0];
     let maxScore = -1;
-
     const loaders = ["fabric", "quilt", "neoforge", "forge"];
-
     loaders.forEach((loader) => {
         state.mcVersionsCache.forEach((cacheVer) => {
             const version = cacheVer.version;
             let score = 0;
-
             state.scannedMods.forEach((mod) => {
                 if (!mod.apiData || mod.apiData === "ERROR") return;
-
                 if (mod.project_type === "resourcepack" || mod.project_type === "shader") {
                     if (mod.apiData.some((r) => r.game_versions.includes(version))) {
                         score++;
@@ -214,7 +253,6 @@ function autoSelectBestEnvironment() {
                     }
                 }
             });
-
             if (score > maxScore) {
                 maxScore = score;
                 bestLoader = loader;
@@ -222,11 +260,9 @@ function autoSelectBestEnvironment() {
             }
         });
     });
-
     if (maxScore > 0) {
         state.selectedLoader = bestLoader;
         state.selectedTargetVersions = [bestVersion];
-
         document.getElementById("btn-ldr-fabric")?.classList.toggle("active", bestLoader === "fabric");
         document.getElementById("btn-ldr-quilt")?.classList.toggle("active", bestLoader === "quilt");
         document.getElementById("btn-ldr-neoforge")?.classList.toggle("active", bestLoader === "neoforge");
@@ -243,23 +279,19 @@ async function evaluateAllMods() {
             return;
         }
         if (!mod.apiData) return;
-
         if (mod.project_type === "resourcepack" || mod.project_type === "shader") {
             mod.priority = PRIORITY.RESOURCE_SHADER;
             const targetVersion = state.selectedTargetVersions[0];
             const exactMatch = mod.apiData.find((release) => release.game_versions.includes(targetVersion));
-
             let allGameVersions = new Set();
             mod.apiData.forEach((release) => {
                 release.game_versions.forEach((v) => {
-                    if (isValidRelease(v) && isAtLeast1_20(v)) allGameVersions.add(v);
+                if (isVersionAllowed(v)) allGameVersions.add(v);
                 });
             });
-
-            const targetGroup = getGroupForVersion(targetVersion);
-            const validSpoofVersions = Array.from(allGameVersions).filter((v) => targetGroup.includes(v));
+            const targetGroupName = getGroupForVersion(targetVersion);
+            const validSpoofVersions = Array.from(allGameVersions).filter((v) => getGroupForVersion(v) === targetGroupName);
             const latestMc = getHighestVersion(Array.from(allGameVersions)) || "Unknown";
-
             if (exactMatch) {
                 mod.statusHtml = `<span class="badge green">Compatible: ${exactMatch.version_number}</span>`;
                 mod.matchedRelease = exactMatch;
@@ -280,11 +312,9 @@ async function evaluateAllMods() {
             }
             return;
         }
-
         let filteredData = mod.apiData.filter((release) => release.loaders.includes(state.selectedLoader));
         const targetVersion = state.selectedTargetVersions[0];
         const exactMatch = filteredData.find((release) => release.game_versions.includes(targetVersion));
-
         if (exactMatch) {
             mod.priority = PRIORITY.GREEN;
             mod.statusHtml = `<span class="badge green">Compatible: ${exactMatch.version_number}</span>`;
@@ -293,14 +323,12 @@ async function evaluateAllMods() {
             let allGameVersions = new Set();
             filteredData.forEach((release) => {
                 release.game_versions.forEach((v) => {
-                    if (isValidRelease(v) && isAtLeast1_20(v)) allGameVersions.add(v);
+                if (isVersionAllowed(v)) allGameVersions.add(v);
                 });
             });
-
-            const targetGroup = getGroupForVersion(targetVersion);
-            const validSpoofVersions = Array.from(allGameVersions).filter((v) => targetGroup.includes(v));
+            const targetGroupName = getGroupForVersion(targetVersion);
+            const validSpoofVersions = Array.from(allGameVersions).filter((v) => getGroupForVersion(v) === targetGroupName);
             const latestMc = getHighestVersion(Array.from(allGameVersions)) || "Unknown";
-
             if (validSpoofVersions.length > 0) {
                 const spoofAs = getHighestVersion(validSpoofVersions);
                 mod.priority = PRIORITY.YELLOW;
@@ -324,7 +352,6 @@ async function evaluateAllMods() {
             mod.matchedRelease = null;
         }
     });
-
     let depsToFetch = new Set();
     state.scannedMods.forEach((mod) => {
         if (mod.matchedRelease && mod.matchedRelease.dependencies) {
@@ -335,7 +362,6 @@ async function evaluateAllMods() {
             });
         }
     });
-
     if (depsToFetch.size > 0) {
         const idsArray = Array.from(depsToFetch);
         for (let i = 0; i < idsArray.length; i += 100) {
@@ -353,23 +379,31 @@ async function evaluateAllMods() {
             } catch (e) {}
         }
     }
-
     renderSidebar();
     renderAll();
+    updateLoaderButtons();
 }
 
 async function handleFiles(files) {
     const loadingOverlay = document.getElementById("loading-overlay");
+    const progressTrack = document.getElementById("loading-progress-track");
+    const progressBar = document.getElementById("loading-progress-bar");
+    const loadingText = document.querySelector(".loading-text");
+
     if (loadingOverlay) loadingOverlay.style.display = "flex";
+    if (progressTrack) progressTrack.style.display = "block";
+    if (progressBar) progressBar.style.width = "0%";
 
     try {
         const fetchPromises = [];
         let hasMrPack = false;
-
         let filesToProcess = Array.from(files);
-
+        
         for (let i = 0; i < filesToProcess.length; i++) {
             const file = filesToProcess[i];
+            
+            if (loadingText) loadingText.innerText = `Reading file ${i + 1} of ${filesToProcess.length}...`;
+            if (progressBar) progressBar.style.width = `${((i + 1) / filesToProcess.length) * 40}%`;
 
             if (file.name.endsWith(".tar") || file.name.endsWith(".tar.gz") || file.name.endsWith(".tgz")) {
                 try {
@@ -382,10 +416,8 @@ async function handleFiles(files) {
                 }
                 continue;
             }
-
             if (file.name.endsWith(".jar") || file.name.endsWith(".zip")) {
                 let isBundle = false;
-
                 if (file.name.endsWith(".zip")) {
                     const zip = new JSZip();
                     try {
@@ -394,7 +426,6 @@ async function handleFiles(files) {
                         const isShaderPack = Object.keys(contents.files).some(
                             (name) => name.includes("shaders/") || name.includes("shaders.properties")
                         );
-
                         if (!isResourcePack && !isShaderPack) {
                             const extractable = [];
                             for (const [filename, zipEntry] of Object.entries(contents.files)) {
@@ -415,20 +446,15 @@ async function handleFiles(files) {
                         console.error(e);
                     }
                 }
-
                 if (isBundle) continue;
-
                 const hash = await getFileHash(file);
                 let modData = null;
-
                 if (file.name.endsWith(".jar")) {
                     modData = await parseJar(file);
                 }
-
                 if (!modData) {
                     modData = { id: file.name, name: file.name, version: "Unknown" };
                 }
-
                 modData.fileHash = hash;
                 if (!state.scannedMods.find((m) => m.fileHash === hash)) {
                     modData.priority = PRIORITY.CHECKING;
@@ -447,22 +473,18 @@ async function handleFiles(files) {
                     if (indexFile) {
                         const rawData = await indexFile.async("string");
                         const indexJson = JSON.parse(rawData);
-
                         if (indexJson.dependencies) {
                             if (indexJson.dependencies.minecraft) {
                                 state.selectedTargetVersions = [indexJson.dependencies.minecraft];
                             }
-
                             let foundLoader = null;
                             if (indexJson.dependencies["fabric-loader"]) foundLoader = "fabric";
                             else if (indexJson.dependencies["quilt-loader"]) foundLoader = "quilt";
                             else if (indexJson.dependencies["neoforge"] || indexJson.dependencies["neo-forge"])
                                 foundLoader = "neoforge";
                             else if (indexJson.dependencies["forge"]) foundLoader = "forge";
-
                             if (foundLoader) {
                                 state.selectedLoader = foundLoader;
-
                                 document
                                     .getElementById("btn-ldr-fabric")
                                     ?.classList.toggle("active", foundLoader === "fabric");
@@ -477,7 +499,6 @@ async function handleFiles(files) {
                                     ?.classList.toggle("active", foundLoader === "forge");
                             }
                         }
-
                         for (const modFile of indexJson.files) {
                             const sha1 = modFile.hashes.sha1;
                             const filename = modFile.path.split("/").pop() || "Unknown File";
@@ -502,18 +523,38 @@ async function handleFiles(files) {
                 }
             }
         }
-
+        
         renderAll();
-        await Promise.all(fetchPromises);
+        
+        const totalFetches = fetchPromises.length;
+        if (totalFetches > 0) {
+            if (loadingText) loadingText.innerText = `Fetching API data for ${totalFetches} mods...`;
+            let completedFetches = 0;
+            
+            const trackedPromises = fetchPromises.map(p => p.then(() => {
+                completedFetches++;
+                if (progressBar) progressBar.style.width = `${40 + (completedFetches / totalFetches) * 50}%`;
+            }));
+            
+            await Promise.all(trackedPromises);
+        } else {
+            if (progressBar) progressBar.style.width = "90%";
+        }
 
+        if (loadingText) loadingText.innerText = "Evaluating compatibility...";
         if (!hasMrPack && state.scannedMods.length > 0) {
             autoSelectBestEnvironment();
         }
-
+        
         await evaluateAllMods();
+        if (progressBar) progressBar.style.width = "100%";
+        
     } finally {
         if (loadingOverlay) {
             loadingOverlay.style.display = "none";
+        }
+        if (progressTrack) {
+            progressTrack.style.display = "none";
         }
     }
 }
@@ -534,4 +575,16 @@ dropZone.addEventListener("drop", (e) => {
     if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
 });
 
-loadMcVersions();
+document.addEventListener("DOMContentLoaded", () => {
+    const snapshotsToggle = document.getElementById("toggle-snapshots");
+    if (snapshotsToggle) {
+        state.includeSnapshots = snapshotsToggle.checked;
+    }
+
+    const olderToggle = document.getElementById("toggle-older");
+    if (olderToggle) {
+        state.showOlderVersions = olderToggle.checked;
+    }
+
+    loadMcVersions();
+});

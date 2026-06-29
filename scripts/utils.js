@@ -1,8 +1,11 @@
 export const state = {
     selectedLoader: "fabric",
-    selectedTargetVersions: ["26.1.2"],
+    selectedTargetVersions: ["1.21.1"],
     scannedMods: [],
+    rawMcVersions: [],
     mcVersionsCache: [],
+    includeSnapshots: false, 
+    showOlderVersions: false,
     currentSortMode: "COMP",
     nameSortDir: 1,
     compSortDir: 1,
@@ -14,6 +17,7 @@ export const state = {
 };
 
 export const PRIORITY = { GREEN: 1, YELLOW: 2, RED: 3, NOT_FOUND: 4, CHECKING: 5, RESOURCE_SHADER: 6 };
+
 export const PRIORITY_NAMES = {
     1: "Compatible",
     2: "Kinda Compatible",
@@ -22,22 +26,6 @@ export const PRIORITY_NAMES = {
     5: "Checking / Errors",
     6: "Shaders & Resource Packs",
 };
-
-export const VERSION_GROUPS = [
-    { name: "26.1.2-26.1", versions: ["26.1.2", "26.1.1", "26.1"] },
-    { name: "1.21.11", versions: ["1.21.11"] },
-    { name: "1.21.10-1.21.9", versions: ["1.21.10", "1.21.9"] },
-    { name: "1.21.8-1.21.7", versions: ["1.21.8", "1.21.7"] },
-    { name: "1.21.6", versions: ["1.21.6"] },
-    { name: "1.21.5", versions: ["1.21.5"] },
-    { name: "1.21.4", versions: ["1.21.4"] },
-    { name: "1.21.3-1.21.2", versions: ["1.21.3", "1.21.2"] },
-    { name: "1.21.1-1.21", versions: ["1.21.1", "1.21"] },
-    { name: "1.20.6-1.20.5", versions: ["1.20.6", "1.20.5"] },
-    { name: "1.20.4-1.20.3", versions: ["1.20.4", "1.20.3"] },
-    { name: "1.20.2", versions: ["1.20.2"] },
-    { name: "1.20.1-1.20", versions: ["1.20.1", "1.20"] },
-];
 
 export const LOADER_FILES = {
     fabric: "icons/fabric.svg",
@@ -75,12 +63,23 @@ export const LOADER_SORT_ORDER = {
     optifine: 6,
 };
 
+export function isVersionAllowed(v) {
+    let isSnapshot = !/^\d+\.\d+(\.\d+)?$/.test(v);
+    let groupName = getGroupForVersion(v);
+    let isOlder = !groupName.includes("26.") && !groupName.includes("1.21") && !groupName.includes("1.20");
+
+    if (!state.showOlderVersions && isOlder) return false;
+    if (!state.includeSnapshots && isSnapshot) return false;
+
+    return true;
+}
+
 export function isValidRelease(v) {
     return /^\d+\.\d+(\.\d+)?$/.test(v);
 }
 
 export function parseVersion(v) {
-    let parts = v.split(".").map(Number);
+    let parts = v.split(/[\.w-]/).filter(p => p !== "").map(p => parseInt(p) || 0);
     return { original: v, maj: parts[0] || 0, min: parts[1] || 0, pat: parts[2] || 0 };
 }
 
@@ -138,27 +137,181 @@ export function getHighestVersion(versionsArray) {
 }
 
 export function getGroupForVersion(v) {
-    for (let g of VERSION_GROUPS) {
-        if (g.versions.includes(v)) return g.versions;
+    if (!v) return "Other Versions";
+
+    const stableGroups = {
+        "26.3": "Release 26.3",
+        "26.2": "Release 26.2",
+        "26.1.2": "Release 26.1", "26.1.1": "Release 26.1", "26.1": "Release 26.1",
+        "1.21.11": "Release 1.21.11",
+        "1.21.10": "Release 1.21.9 & 1.21.10", "1.21.9": "Release 1.21.9 & 1.21.10",
+        "1.21.8": "Release 1.21.7 & 1.21.8", "1.21.7": "Release 1.21.7 & 1.21.8",
+        "1.21.6": "Release 1.21.6",
+        "1.21.5": "Release 1.21.5",
+        "1.21.4": "Release 1.21.4",
+        "1.21.3": "Release 1.21.2 & 1.21.3", "1.21.2": "Release 1.21.2 & 1.21.3",
+        "1.21.1": "Release 1.21 & 1.21.1", "1.21": "Release 1.21 & 1.21.1",
+        "1.20.6": "Release 1.20.5 & 1.20.6", "1.20.5": "Release 1.20.5 & 1.20.6",
+        "1.20.4": "Release 1.20.3 & 1.20.4", "1.20.3": "Release 1.20.3 & 1.20.4",
+        "1.20.2": "Release 1.20.2",
+        "1.20.1": "Release 1.20 & 1.20.1", "1.20": "Release 1.20 & 1.20.1",
+        "1.19.4": "Release 1.19.4",
+        "1.19.3": "Release 1.19.3",
+        "1.19.2": "Release 1.19.1 & 1.19.2", "1.19.1": "Release 1.19.1 & 1.19.2",
+        "1.19": "Release 1.19",
+        "1.18.2": "Release 1.18.2",
+        "1.18.1": "Release 1.18 & 1.18.1", "1.18": "Release 1.18 & 1.18.1",
+        "1.17.1": "Release 1.17.1",
+        "1.17": "Release 1.17",
+        "1.16.5": "Release 1.16.4 & 1.16.5", "1.16.4": "Release 1.16.4 & 1.16.5",
+        "1.16.3": "Release 1.16.2 & 1.16.3", "1.16.2": "Release 1.16.2 & 1.16.3",
+        "1.16.1": "Release 1.16 & 1.16.1", "1.16": "Release 1.16 & 1.16.1",
+        "1.15.2": "Release 1.15.2",
+        "1.15.1": "Release 1.15 & 1.15.1", "1.15": "Release 1.15 & 1.15.1",
+        "1.14.4": "Release 1.14.4",
+        "1.14.3": "Release 1.14.3",
+        "1.14.2": "Release 1.14.1 & 1.14.2", "1.14.1": "Release 1.14.1 & 1.14.2",
+        "1.14": "Release 1.14",
+        "1.13.2": "Release 1.13.2",
+        "1.13.1": "Release 1.13.1",
+        "1.13": "Release 1.13",
+        "1.12.2": "Release 1.12", "1.12.1": "Release 1.12", "1.12": "Release 1.12",
+        "1.11.2": "Release 1.11.1 & 1.11.2", "1.11.1": "Release 1.11.1 & 1.11.2",
+        "1.11": "Release 1.11",
+        "1.10.2": "Release 1.10", "1.10.1": "Release 1.10", "1.10": "Release 1.10",
+        "1.9.4": "Release 1.9.3 & 1.9.4", "1.9.3": "Release 1.9.3 & 1.9.4",
+        "1.9.2": "Release 1.9.1 & 1.9.2", "1.9.1": "Release 1.9.1 & 1.9.2",
+        "1.9": "Release 1.9",
+        "1.8.9": "Release 1.8.8 & 1.8.9", "1.8.8": "Release 1.8.8 & 1.8.9",
+        "1.8.7": "Release 1.8.2 to 1.8.7", "1.8.6": "Release 1.8.2 to 1.8.7", "1.8.5": "Release 1.8.2 to 1.8.7", "1.8.4": "Release 1.8.2 to 1.8.7", "1.8.3": "Release 1.8.2 to 1.8.7", "1.8.2": "Release 1.8.2 to 1.8.7",
+        "1.8.1": "Release 1.8 & 1.8.1", "1.8": "Release 1.8 & 1.8.1",
+        "1.7.10": "Release 1.7.10",
+        "1.7.9": "Release 1.7.6 to 1.7.9", "1.7.8": "Release 1.7.6 to 1.7.9", "1.7.7": "Release 1.7.6 to 1.7.9", "1.7.6": "Release 1.7.6 to 1.7.9",
+        "1.7.5": "Release 1.7.4 & 1.7.5", "1.7.4": "Release 1.7.4 & 1.7.5",
+        "1.7.3": "Release 1.7.2 & 1.7.3", "1.7.2": "Release 1.7.2 & 1.7.3",
+        "1.6.4": "Release 1.6.4",
+        "1.6.2": "Release 1.6.1 & 1.6.2", "1.6.1": "Release 1.6.1 & 1.6.2",
+        "1.5.2": "Release 1.5.1 & 1.5.2", "1.5.1": "Release 1.5.1 & 1.5.2",
+        "1.4.7": "Release 1.4.6 & 1.4.7", "1.4.6": "Release 1.4.6 & 1.4.7",
+        "1.4.5": "Release 1.4.4 & 1.4.5", "1.4.4": "Release 1.4.4 & 1.4.5",
+        "1.4.2": "Release 1.4.2",
+        "1.3.2": "Release 1.3", "1.3.1": "Release 1.3",
+        "1.2.5": "Release 1.2", "1.2.4": "Release 1.2", "1.2.3": "Release 1.2", "1.2.2": "Release 1.2", "1.2.1": "Release 1.2",
+        "1.1": "Release 1.1",
+        "1.0": "Release 1.0"
+    };
+
+    if (stableGroups[v]) return stableGroups[v];
+
+    if (v.includes("-rc") || v.includes("-pre") || v.includes("-snapshot") || v.includes(" Pre-Release")) {
+        let baseVersion = v.split(/-| Pre-Release/)[0].trim();
+        if (stableGroups[baseVersion]) return stableGroups[baseVersion];
     }
-    return [v];
+
+    if (/^\d{2}w\d{2}[a-z]$/.test(v) || v.includes("potato") || v.includes("craftmine") || v.includes("infinite") || v.includes("oneblockatatime") || v.includes("or_b")) {
+        let year = parseInt(v.substring(0, 2));
+        let week = parseInt(v.substring(3, 5)) || 0;
+
+        if (year === 26) {
+            if (week >= 14) return "Release 26.2";
+            return "Release 26.1";
+        }
+        if (year === 25) {
+            if (week >= 41) return "Release 1.21.11";
+            if (week >= 31) return "Release 1.21.9 & 1.21.10";
+            if (week >= 15 || v.includes("craftmine")) return "Release 1.21.6";
+            return "Release 1.21.5";
+        }
+        if (year === 24) {
+            if (week >= 44) return "Release 1.21.4";
+            if (week >= 33) return "Release 1.21.2 & 1.21.3";
+            if (week >= 18) return "Release 1.21 & 1.21.1";
+            if (week >= 3 || v.includes("potato")) return "Release 1.20.5 & 1.20.6";
+        }
+        if (year === 23) {
+            if (week >= 51) return "Release 1.20.5 & 1.20.6";
+            if (week >= 40) return "Release 1.20.3 & 1.20.4";
+            if (week >= 31) return "Release 1.20.2";
+            if (week >= 12 || v.includes("or_b")) return "Release 1.20 & 1.20.1";
+            return "Release 1.19.4";
+        }
+        if (year === 22) {
+            if (week >= 46) return "Release 1.19.3";
+            if (week >= 24) return "Release 1.19.1 & 1.19.2";
+            if (week >= 11 || v.includes("oneblockatatime")) return "Release 1.19";
+            return "Release 1.18.2";
+        }
+        if (year === 21) {
+            if (week >= 37) return "Release 1.18 & 1.18.1";
+            return "Release 1.17";
+        }
+        if (year === 20) {
+            if (week >= 45) return "Release 1.17";
+            if (week >= 27) return "Release 1.16.2 & 1.16.3";
+            if (week >= 6 || v.includes("infinite")) return "Release 1.16 & 1.16.1";
+        }
+        if (year === 19) {
+            if (week >= 34) return "Release 1.15 & 1.15.1";
+            return "Release 1.14";
+        }
+        if (year === 18) {
+            if (week >= 43) return "Release 1.14";
+            if (week >= 30) return "Release 1.13.1";
+            return "Release 1.13";
+        }
+        if (year === 17) {
+            if (week >= 43) return "Release 1.13";
+            if (week >= 31) return "Release 1.12"; 
+            if (week >= 6) return "Release 1.12";
+        }
+        if (year === 16) {
+            if (week >= 50) return "Release 1.11.1 & 1.11.2";
+            if (week >= 32) return "Release 1.11";
+            if (week >= 20) return "Release 1.10";
+            if (week >= 14) return "Release 1.9.3 & 1.9.4";
+            return "Release 1.9";
+        }
+        if (year === 15) {
+            if (week >= 14) return "Release 1.9";
+        }
+        if (year === 14) {
+            return "Release 1.8 & 1.8.1";
+        }
+        if (year === 13) {
+            if (week >= 36) return "Release 1.8 & 1.8.1";
+            return "Release 1.6.1 & 1.6.2";
+        }
+    }
+
+    if (v === "1.7" || v === "1.7.1") return "Release 1.7.2 & 1.7.3";
+    if (v === "1.6" || v === "1.6.3") return v === "1.6.3" ? "Release 1.6.4" : "Release 1.6.1 & 1.6.2";
+    if (v === "1.5") return "Release 1.5.1 & 1.5.2";
+    if (v === "1.4" || v === "1.4.1" || v === "1.4.3") return "Release 1.4.2";
+    if (v === "1.3") return "Release 1.3";
+    if (v === "3D Shareware v1.34") return "Release 1.14";
+    if (v === "1.RV-Pre1") return "Release 1.9";
+
+    let fallbackMatch = v.match(/^1\.(\d+)/);
+    if (fallbackMatch) return `Release 1.${fallbackMatch[1]}`;
+
+    return "Other Versions";
 }
 
 export function getLoaderVersionRanges(apiData) {
     if (!apiData || apiData === "ERROR" || apiData.length === 0) return {};
     let loaderVersions = {};
-
     const allowedLoaders = ["fabric", "quilt", "forge", "neoforge", "iris", "optifine"];
-
+    
     apiData.forEach((release) => {
         release.loaders.forEach((l) => {
             const safeLoader = l.toLowerCase();
-
             if (!allowedLoaders.includes(safeLoader)) return;
-
             if (!loaderVersions[safeLoader]) loaderVersions[safeLoader] = new Set();
+            
             release.game_versions.forEach((v) => {
-                if (isValidRelease(v) && isAtLeast1_20(v)) loaderVersions[safeLoader].add(v);
+                if (/^\d+\.\d+(\.\d+)?$/.test(v) && isVersionAllowed(v)) {
+                    loaderVersions[safeLoader].add(v);
+                }
             });
         });
     });
@@ -184,19 +337,19 @@ export function getLoaderVersionRanges(apiData) {
                         prev = curr;
                     } else {
                         allRanges.push(
-                            start.original === prev.original ? start.original : `${start.original}–${prev.original}`
+                            start.original === prev.original ? start.original : `${start.original}-${prev.original}`
                         );
                         start = curr;
                         prev = curr;
                     }
                 }
                 allRanges.push(
-                    start.original === prev.original ? start.original : `${start.original}–${prev.original}`
+                    start.original === prev.original ? start.original : `${start.original}-${prev.original}`
                 );
             }
             allRanges.sort((a, b) => {
-                let pA = parseVersion(a.split("–")[0]),
-                    pB = parseVersion(b.split("–")[0]);
+                let pA = parseVersion(a.split(" ")[0]),
+                    pB = parseVersion(b.split(" ")[0]);
                 if (pA.maj !== pB.maj) return pA.maj - pB.maj;
                 if (pA.min !== pB.min) return pA.min - pB.min;
                 return pA.pat - pB.pat;
@@ -209,7 +362,6 @@ export function getLoaderVersionRanges(apiData) {
 
 export async function extractTarArchive(file) {
     let buffer;
-
     if (file.name.endsWith(".gz") || file.name.endsWith(".tgz")) {
         const ds = new DecompressionStream("gzip");
         const stream = file.stream().pipeThrough(ds);
@@ -218,37 +370,29 @@ export async function extractTarArchive(file) {
     } else {
         buffer = await file.arrayBuffer();
     }
-
     const files = [];
     let offset = 0;
     const uint8 = new Uint8Array(buffer);
     const decoder = new TextDecoder("utf-8");
-
     while (offset < uint8.length - 512) {
         const header = uint8.subarray(offset, offset + 512);
         if (header[0] === 0) break;
-
         const nameBytes = header.subarray(0, 100);
         let nameLen = 0;
         while (nameLen < 100 && nameBytes[nameLen] !== 0) nameLen++;
         const name = decoder.decode(nameBytes.subarray(0, nameLen));
-
         const sizeBytes = header.subarray(124, 136);
         let sizeStr = decoder.decode(sizeBytes).replace(/\0/g, "").trim();
         const size = parseInt(sizeStr, 8) || 0;
-
         const typeflag = String.fromCharCode(header[156]);
         const isFile = typeflag === "0" || typeflag === "\0";
-
         offset += 512;
-
         if (isFile && size > 0 && (name.endsWith(".jar") || name.endsWith(".zip"))) {
             const fileData = uint8.subarray(offset, offset + size);
             const blob = new Blob([fileData]);
             blob.name = name.split("/").pop();
             files.push(blob);
         }
-
         offset += Math.ceil(size / 512) * 512;
     }
     return files;
