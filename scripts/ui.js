@@ -772,3 +772,35 @@ export function updateLoaderButtons() {
         btn.innerHTML = `<img src="icons/${loader}.svg" alt="${displayTitle}" class="btn-loader-icon"> <span>${displayTitle}</span> <span class="pct ${pctClass}">${pct}%</span>`;
     });
 }
+
+export function showToast(title, message, duration = 5000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.className = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    
+    toast.innerHTML = `
+        <span class="material-symbols-outlined toast-icon">error</span>
+        <div class="toast-content">
+            <div class="toast-title">${title}</div>
+            <div class="toast-message">${message}</div>
+        </div>
+    `;
+
+    container.appendChild(toast);
+
+    // Trigger reflow to play animation
+    void toast.offsetWidth;
+    toast.classList.add('show');
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 400); // Wait for transition
+    }, duration);
+}

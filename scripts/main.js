@@ -7,7 +7,7 @@ import {
     getGroupForVersion,
 } from "./utils.js";
 import { loadMcVersions, fetchModData, updateVersionsCache } from "./api.js";
-import { renderSidebar, renderAll, updateLoaderButtons, updateModDOM } from "./ui.js";
+import { renderSidebar, renderAll, updateLoaderButtons, updateModDOM, showToast } from "./ui.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -490,6 +490,11 @@ async function handleFiles(files) {
             if (loadingText) loadingText.innerText = `Reading file ${i + 1} of ${filesToProcess.length}...`;
             if (progressBar) progressBar.style.width = `${((i + 1) / filesToProcess.length) * 40}%`;
 
+            if (file.name.endsWith(".jar")) {
+                showToast("Invalid File Type", `'${file.name}' is a .jar file. This tool is designed to analyze full modpacks. Please upload a modpack (.mrpack or .zip) instead.`);
+                continue;
+            }
+
             if (file.name.endsWith(".mrpack") || file.name.endsWith(".zip")) {
                 const zip = new JSZip();
                 try {
@@ -620,6 +625,7 @@ async function handleFiles(files) {
                     } 
                     else {
                         console.warn(`Skipped ${file.name}: No valid modpack manifest found.`);
+                        showToast("Missing Manifest", `'${file.name}' does not contain a valid modpack manifest (modrinth.index.json or manifest.json). Make sure you are uploading a valid modpack format!`);
                     }
                 } catch (e) {
                     console.error(`Failed to parse archive ${file.name}:`, e);
