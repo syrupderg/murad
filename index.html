@@ -42,7 +42,6 @@
         <main class="workspace">
             <header>
                 <h1>MURAD - Mod Update <span class="pixel-text">RADAR</span></h1>
-                <p>Drop your ZIPs or MRPACKs to check compatibility</p>
             </header>
 
             <div id="drop-zone" class="m3-card">
@@ -50,6 +49,11 @@
                 <h2>Drag & Drop your modpack file here!</h2>
                 <p style="color: #9aa0a6;">Supports only modpack files (.mrpack or .zip)</p>
                 <input type="file" id="file-input" accept=".mrpack,.zip" style="display: none;" multiple>
+                
+                <div class="url-upload-container" onclick="event.stopPropagation()">
+                    <input type="url" id="url-input" placeholder="Or paste a Modrinth/CurseForge URL!">
+                    <button id="btn-fetch-url">Load URL</button>
+                </div>
             </div>
 
             <div class="stats-row">

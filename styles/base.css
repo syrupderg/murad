@@ -97,3 +97,44 @@ body {
     display: inline-block;
     animation: spin 1.5s linear infinite;
 }
+
+.url-upload-container {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    align-items: center;
+}
+
+#url-input {
+    width: 60%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--mc-border);
+    background: rgba(0, 0, 0, 0.3);
+    color: var(--m3-on-surface);
+    font-family: inherit;
+    font-size: 0.9rem;
+    outline: none;
+    transition: 0.2s;
+}
+
+#url-input:focus {
+    border-color: var(--m3-primary);
+}
+
+#btn-fetch-url {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: var(--m3-primary);
+    color: #fff;
+    font-weight: bold;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.2s;
+}
+
+#btn-fetch-url:hover {
+    background: #2e7d32;
+}

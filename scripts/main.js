@@ -686,3 +686,87 @@ document.addEventListener("DOMContentLoaded", () => {
 
     loadMcVersions();
 });
+
+const urlInput = document.getElementById("url-input");
+const btnFetchUrl = document.getElementById("btn-fetch-url");
+
+if (urlInput) {
+    urlInput.addEventListener("click", (e) => e.stopPropagation());
+}
+
+if (btnFetchUrl) {
+    btnFetchUrl.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const rawUrl = urlInput.value.trim();
+        if (!rawUrl) return;
+
+        const loadingOverlay = document.getElementById("loading-overlay");
+        const loadingText = document.querySelector(".loading-text");
+
+        try {
+            loadingOverlay.style.display = "flex";
+            loadingText.innerText = "Resolving URL...";
+
+            let downloadUrl = rawUrl;
+            let filename = "";
+
+            const mrMatch = rawUrl.match(/modrinth\.com\/(?:mod|modpack|resourcepack|shader)\/([^/]+)\/version\/([^/?#]+)/);
+            if (mrMatch) {
+                loadingText.innerText = "Fetching Modrinth version...";
+                const projectSlug = mrMatch[1];
+                const versionId = mrMatch[2];
+                const res = await fetch(`https://api.modrinth.com/v2/project/${projectSlug}/version/${versionId}`);
+                if (!res.ok) throw new Error("Modrinth API error");
+                const data = await res.json();
+                const primary = data.files.find(f => f.primary) || data.files[0];
+                downloadUrl = primary.url;
+                filename = primary.filename;
+            } 
+            else if (rawUrl.includes("curseforge.com")) {
+                loadingText.innerText = "Resolving CurseForge link...";
+                const cfMatch = rawUrl.match(/curseforge\.com\/minecraft\/(?:mc-mods|modpacks|texture-packs|customization)\/([^/]+)\/(?:files|download)\/(\d+)/);
+                if (!cfMatch) throw new Error("Could not parse CurseForge URL. Must include project slug and file ID.");
+                
+                const projectSlug = cfMatch[1];
+                const fileId = cfMatch[2];
+                const CF_WORKER = "https://murad.syrupderg.workers.dev";
+
+                const searchRes = await fetch(`${CF_WORKER}/v1/mods/search?gameId=432&slug=${projectSlug}`);
+                if (!searchRes.ok) throw new Error("CurseForge worker API error (search)");
+                const searchData = await searchRes.json();
+                if (!searchData.data || searchData.data.length === 0) throw new Error("Mod not found on CurseForge");
+                const modId = searchData.data[0].id;
+
+                const downloadRes = await fetch(`${CF_WORKER}/v1/mods/${modId}/files/${fileId}/download-url`);
+                if (!downloadRes.ok) throw new Error("Failed to get CurseForge download URL from worker");
+                const downloadData = await downloadRes.json();
+                
+                const fileRes = await fetch(`${CF_WORKER}/v1/mods/${modId}/files/${fileId}`);
+                if (fileRes.ok) {
+                    const fileData = await fileRes.json();
+                    filename = fileData.data.fileName;
+                }
+                
+                downloadUrl = `${CF_WORKER}/proxy-download?url=${encodeURIComponent(downloadData.data)}&filename=${encodeURIComponent(filename)}`;
+            }
+            loadingText.innerText = "Downloading...";
+            const response = await fetch(downloadUrl);
+            const blob = await response.blob();
+            
+            const file = new File([blob], filename || "downloaded.mrpack", { 
+                type: blob.type,
+                lastModified: Date.now() 
+            });
+            
+            loadingOverlay.style.display = "none";
+            urlInput.value = "";
+            
+            handleFiles([file]);
+
+        } catch (err) {
+            console.error(err);
+            alert("Error: " + err.message);
+            loadingOverlay.style.display = "none";
+        }
+    });
+}
