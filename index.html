@@ -62,7 +62,7 @@
                 <div id="detailed-stats-deps" class="detailed-stats" style="display: none;"></div>
             </div>
 
-            <div class="controls-bar m3-card">
+            <div id="controls-bar" class="controls-bar m3-card hidden-ui">
                 <div class="search-container">
                     <span class="material-symbols-outlined search-icon">search</span>
                     <input type="text" placeholder="Search mods..." onkeyup="handleSearch(event)">
@@ -138,10 +138,10 @@
             <div id="mod-list" class="m3-list" style="margin-top: 16px;"></div>
         </main>
 
-        <aside class="version-sidebar m3-card">
+        <aside id="version-sidebar" class="version-sidebar m3-card hidden-ui">
             <h3 style="margin-top: 0;">Target Loader</h3>
             <div class="sidebar-loader-toggles">
-                <button id="btn-ldr-fabric" class="tgl-btn active" onclick="setLoader('fabric')">
+                <button id="btn-ldr-fabric" class="tgl-btn" onclick="setLoader('fabric')">
                     <img src="icons/fabric.svg" alt="Fabric" class="btn-loader-icon"> <span>Fabric</span>
                 </button>
                 <button id="btn-ldr-quilt" class="tgl-btn" onclick="setLoader('quilt')">
@@ -158,9 +158,6 @@
             <div style="display: flex; flex-direction: column; gap: 8px; margin: 15px 0; font-size: 0.85rem; color: #b0b5ba;">
                 <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
                     <input type="checkbox" id="toggle-snapshots" onchange="toggleSnapshots(event)"> Include Snapshots
-                </label>
-                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-                    <input type="checkbox" id="toggle-older" onchange="toggleOlderVersions(event)"> Show Older Versions (&lt; 1.20)
                 </label>
             </div>
 

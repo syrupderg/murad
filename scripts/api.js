@@ -7,6 +7,7 @@ async function fetchWithRetry(url, options = {}, retries = 3) {
     for (let i = 0; i < retries; i++) {
         const response = await fetch(url, options);
         if (response.status === 429) {
+            if (i === retries - 1) throw new Error("429 Rate Limit");
             await new Promise(resolve => setTimeout(resolve, 1500 * Math.pow(2, i)));
             continue;
         }
@@ -56,7 +57,7 @@ async function fetchCurseForgeData(mod) {
         const searchData = await searchRes.json();
         if (!searchData.data || searchData.data.length === 0) throw new Error("Not found on CurseForge");
 
-        const validHits = searchData.data.filter(hit => hit.classId === 6 || hit.classId === 12 || hit.classId === 6552);
+        const validHits = searchData.data.filter(hit => hit.classId !== 4471 && hit.classId !== 17);
 
         exactHit = validHits.find(hit => 
             hit.slug.toLowerCase() === mod.id.toLowerCase() || 
@@ -76,7 +77,14 @@ async function fetchCurseForgeData(mod) {
         if (!exactHit) throw new Error("Strict match not found on CurseForge");
     }
 
-    mod.project_type = exactHit.classId === 12 ? "resourcepack" : (exactHit.classId === 6552 ? "shader" : "mod");
+    const isDatapack = exactHit.categories && exactHit.categories.some(c => c.name && (c.name.toLowerCase().includes("data pack") || c.name.toLowerCase().includes("datapack")));
+    const cfProjectType = isDatapack ? "datapack" : (exactHit.classId === 12 ? "resourcepack" : (exactHit.classId === 6552 ? "shader" : "mod"));
+    
+    if (!mod.project_type || mod.project_type === "mod" || mod.project_type === "unknown") {
+        mod.project_type = cfProjectType;
+    } else if (cfProjectType !== "mod") {
+        mod.project_type = cfProjectType;
+    }
     mod.project_downloads = exactHit.downloadCount;
     mod.project_date_modified = exactHit.dateModified;
 
@@ -88,18 +96,19 @@ async function fetchCurseForgeData(mod) {
         allFiles.push(...firstData.data);
         const totalCount = firstData.pagination ? firstData.pagination.totalCount : firstData.data.length;
 
-        let fetchPromises = [];
+        let allIndices = [];
         for (let i = 50; i < totalCount; i += 50) {
-            fetchPromises.push(
+            allIndices.push(i);
+        }
+
+        while (allIndices.length > 0) {
+            const chunk = allIndices.splice(0, 5);
+            const promises = chunk.map(i => 
                 fetchWithRetry(`${CF_WORKER_URL}/v1/mods/${exactHit.id}/files?index=${i}&pageSize=50`)
                 .then(r => r.json())
                 .then(d => d.data || [])
             );
-        }
-
-        while (fetchPromises.length > 0) {
-            const chunk = fetchPromises.splice(0, 5);
-            const results = await Promise.all(chunk);
+            const results = await Promise.all(promises);
             for (const r of results) {
                 allFiles.push(...r);
             }
@@ -114,8 +123,15 @@ async function fetchCurseForgeData(mod) {
         if (lowerVersions.includes('forge')) loaders.push('forge');
         if (lowerVersions.includes('neoforge')) loaders.push('neoforge');
         if (lowerVersions.includes('quilt')) loaders.push('quilt');
+        if (lowerVersions.some(v => v.includes('datapack') || v.includes('data pack'))) loaders.push('datapack');
+        if (lowerVersions.some(v => v.includes('iris'))) loaders.push('iris');
+        if (lowerVersions.some(v => v.includes('optifine'))) loaders.push('optifine');
         
-        if (loaders.length === 0 && mod.project_type !== "resourcepack") {
+        if (loaders.length === 0 && mod.project_type === "shader") {
+            loaders.push('iris', 'optifine');
+        }
+        
+        if (loaders.length === 0 && mod.project_type !== "resourcepack" && mod.project_type !== "datapack" && mod.project_type !== "shader") {
             const fName = file.fileName.toLowerCase();
             if (fName.includes('fabric')) loaders.push('fabric');
             if (fName.includes('forge')) loaders.push('forge');
@@ -134,8 +150,62 @@ async function fetchCurseForgeData(mod) {
 
         const sha1Hash = file.hashes ? file.hashes.find(h => h.algo === 1)?.value : "";
 
+        let cleanVersion = file.fileName;
+        const extMatch = cleanVersion.match(/\.(jar|zip|rar|mrpack)$/i);
+        if (extMatch) {
+            let tempVersion = cleanVersion.substring(0, cleanVersion.lastIndexOf('.'));
+            
+            let namesToRemove = [];
+            if (mod.name) {
+                namesToRemove.push(mod.name, mod.name.replace(/\s+/g, ""), mod.name.replace(/\s+/g, "-"), mod.name.replace(/\s+/g, "_"));
+                const parts = mod.name.split("-").map(p => p.trim());
+                namesToRemove.push(...parts);
+                namesToRemove.push(...parts.map(p => p.replace(/\s+/g, "_")));
+            }
+            if (exactHit.slug) {
+                namesToRemove.push(exactHit.slug, exactHit.slug.replace(/-/g, ""), exactHit.slug.replace(/-/g, "_"));
+            }
+            
+            namesToRemove.sort((a, b) => b.length - a.length);
+            for (const str of namesToRemove) {
+                if (!str || str.length < 2) continue;
+                const escaped = str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const regex = new RegExp(`[\\[\\(\\{]?${escaped}[\\]\\)\\}]?`, "gi");
+                tempVersion = tempVersion.replace(regex, "");
+            }
+
+            let gvToRemove = [...file.gameVersions].sort((a, b) => b.length - a.length);
+            for (const str of gvToRemove) {
+                if (!str || str.length < 2) continue;
+                const escaped = str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                
+                const bracketRegex = new RegExp(`\\[${escaped}\\]|\\(${escaped}\\)|\\{${escaped}\\}`, "gi");
+                tempVersion = tempVersion.replace(bracketRegex, "");
+
+                const standaloneRegex = new RegExp(`[-_]${escaped}(?=[-_]|$)`, "gi");
+                tempVersion = tempVersion.replace(standaloneRegex, "");
+                
+                const startRegex = new RegExp(`^${escaped}[-_]`, "gi");
+                tempVersion = tempVersion.replace(startRegex, "");
+            }
+
+            const plusIndex = tempVersion.indexOf("+");
+            if (plusIndex !== -1) {
+                tempVersion = tempVersion.substring(0, plusIndex);
+            }
+
+            tempVersion = tempVersion.replace(/^[-_\s]+|[-_\s]+$/g, "");
+            tempVersion = tempVersion.replace(/[-_\s]+/g, "-");
+            
+            if (tempVersion.length > 0) {
+                cleanVersion = tempVersion;
+            } else {
+                cleanVersion = cleanVersion.substring(0, cleanVersion.lastIndexOf('.'));
+            }
+        }
+
         return {
-            version_number: file.fileName,
+            version_number: cleanVersion,
             version_type: rType,
             date_published: file.fileDate,
             game_versions: mcVersions,
@@ -170,9 +240,11 @@ export async function fetchModData(mod) {
     if (runMr) {
         try {
             let hashRes = await fetch(`https://api.modrinth.com/v2/version_file/${mod.fileHash}?algorithm=sha1`);
+            if (hashRes.status === 429) throw new Error("429 Rate Limit");
             if (hashRes.ok) {
                 const hashData = await hashRes.json();
                 const projRes = await fetch(`https://api.modrinth.com/v2/project/${hashData.project_id}`);
+                if (projRes.status === 429) throw new Error("429 Rate Limit");
                 if (projRes.ok) {
                     const projData = await projRes.json();
                     mod.project_type = projData.project_type;
@@ -185,6 +257,7 @@ export async function fetchModData(mod) {
                 resolvedOnModrinth = true;
             } else {
                 let projectRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
+                if (projectRes.status === 429) throw new Error("429 Rate Limit");
                 let isModpackCollision = false;
 
                 if (projectRes.ok) {
@@ -203,8 +276,9 @@ export async function fetchModData(mod) {
 
                 if (!projectRes.ok || isModpackCollision) {
                     const searchRes = await fetch(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(mod.name)}&limit=50`);
+                    if (searchRes.status === 429) throw new Error("429 Rate Limit");
                     const searchData = await searchRes.json();
-                    const validHits = searchData.hits.filter(hit => hit.project_type === "mod" || hit.project_type === "resourcepack" || hit.project_type === "shader");
+                    const validHits = searchData.hits.filter(hit => hit.project_type === "mod" || hit.project_type === "resourcepack" || hit.project_type === "shader" || hit.project_type === "datapack");
                     
                     let exactHit = validHits.find(hit => hit.slug.toLowerCase() === mod.id.toLowerCase() || hit.title.toLowerCase() === mod.name.toLowerCase());
                     if (!exactHit) {
@@ -219,6 +293,7 @@ export async function fetchModData(mod) {
                         resolvedOnModrinth = true;
                         
                         const newProjectRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}`);
+                        if (newProjectRes.status === 429) throw new Error("429 Rate Limit");
                         if (newProjectRes.ok) {
                             const newProjData = await newProjectRes.json();
                             mod.project_type = newProjData.project_type;
@@ -232,6 +307,9 @@ export async function fetchModData(mod) {
             }
         } catch (e) {
             console.warn("Modrinth identity resolution failed", e);
+            if (e.message.includes("429")) {
+                mod.rateLimited = true;
+            }
         }
     }
 
@@ -239,6 +317,7 @@ export async function fetchModData(mod) {
         if (!runMr) return [];
         if (!resolvedOnModrinth) throw new Error("Not resolved on Modrinth");
         const allRes = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`);
+        if (allRes.status === 429) throw new Error("429 Rate Limit");
         if (!allRes.ok) throw new Error("Failed to fetch Modrinth versions");
         const versionsData = await allRes.json();
         if (!Array.isArray(versionsData)) throw new Error("Invalid Modrinth versions data");
@@ -251,6 +330,13 @@ export async function fetchModData(mod) {
     };
 
     const [mrResult, cfResult] = await Promise.allSettled([fetchModrinthVersions(), fetchCFVersions()]);
+
+    if ((mrResult.status === "rejected" && mrResult.reason.message.includes("429")) || 
+        (cfResult.status === "rejected" && cfResult.reason.message.includes("429")) ||
+        mod.rateLimited) {
+        mod.apiData = "RATE_LIMIT";
+        return;
+    }
 
     if (mrResult.status === "fulfilled" && Array.isArray(mrResult.value)) {
         combinedData.push(...mrResult.value);

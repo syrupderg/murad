@@ -12,7 +12,8 @@ import {
     getHighestVersion,
     getLoaderVersionRanges,
     getGroupForVersion,
-    isConsecutiveVersion
+    isConsecutiveVersion,
+    isVersionAllowed
 } from "./utils.js";
 
 function formatMinecraftVersions(versions) {
@@ -121,7 +122,7 @@ export function renderSidebar() {
             
             let handledVersions = new Set();
             
-            if (m.priority === PRIORITY.RESOURCE_SHADER) {
+            if (m.priority === PRIORITY.RESOURCE_PACK || m.priority === PRIORITY.SHADER || m.priority === PRIORITY.DATA_PACK) {
                 m.apiData.forEach(release => {
                     release.game_versions.forEach(v => handledVersions.add(v));
                 });
@@ -206,7 +207,9 @@ export function updateStatsUI(list) {
         <span class="stat-green">${list.filter((m) => m.priority === 1).length} Compatible</span>
         <span class="stat-yellow">${list.filter((m) => m.priority === 2).length} Kinda Compatible</span>
         <span class="stat-red">${list.filter((m) => m.priority === 3).length} Incompatible</span>
-        <span style="color: #448aff; font-weight: bold;">${list.filter((m) => m.priority === 6).length} Cosmetics</span>
+        <span style="color: #1BD96A; font-weight: bold;">${list.filter((m) => m.priority === 6).length} Resource Packs</span>
+        <span style="color: #448aff; font-weight: bold;">${list.filter((m) => m.priority === 7).length} Shaders</span>
+        <span style="color: #4FC3F7; font-weight: bold;">${list.filter((m) => m.priority === 8).length} Data Packs</span>
         <span class="stat-gray">${list.filter((m) => m.priority === 4 || m.priority === 5).length} Not Found</span>
     `;
     let uniqueReq = new Set();
@@ -309,7 +312,7 @@ export function updateDownloadPackBar(list) {
     if (!downloadBar) return;
     const excludeKinda = document.getElementById("exclude-kinda-checkbox")?.checked || false;
     let validMods = list.filter((m) => {
-        if (m.priority === 1 || m.priority === 6) return true;
+        if ([1, 6, 7, 8].includes(m.priority)) return true;
         if (m.priority === 2 && !excludeKinda) return true;
         return false;
     });
@@ -383,20 +386,31 @@ export function renderAll() {
             htmlBuilder += generateModHTML(mod);
         });
     } else if (state.currentSortMode === "COMP") {
-        const priorities = state.compSortDir === 1 ? [1, 2, 6, 3, 4, 5] : [5, 4, 3, 6, 2, 1];
+        const priorities = state.compSortDir === 1 ? [1, 2, 6, 7, 8, 3, 4, 5] : [5, 4, 3, 8, 7, 6, 2, 1];
         priorities.forEach((p) => {
             let group = displayList.filter((m) => m.priority === p);
             if (group.length > 0) {
                 let catDir = state.catSortDirs[p];
                 group.sort((a, b) => a.name.localeCompare(b.name) * catDir);
+                let collapsed = state.catCollapsed[p];
                 htmlBuilder += `
-                    <div class="category-header">
+                    <div class="category-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <span>${PRIORITY_NAMES[p]} (${group.length})</span>
-                        <button class="cat-sort-btn" onclick="toggleCatSort(${p})">${catDir === 1 ? "A-Z" : "Z-A"}</button>
+                        <div style="display: flex; gap: 8px;">
+                            <button class="cat-sort-btn" onclick="toggleCatSort(${p})">${catDir === 1 ? "A-Z" : "Z-A"}</button>
+                            <button class="cat-sort-btn" onclick="toggleCatCollapse(${p})" style="width: 32px; padding: 4px; display: flex; align-items: center; justify-content: center;" title="Expand / Collapse">
+                                <span class="material-symbols-outlined" style="font-size: 18px;">${collapsed ? "expand_more" : "expand_less"}</span>
+                            </button>
+                        </div>
                     </div>`;
-                group.forEach((mod) => {
-                    htmlBuilder += generateModHTML(mod);
-                });
+                
+                if (!collapsed) {
+                    htmlBuilder += `<div class="category-content" style="display: flex; flex-direction: column; gap: 10px;">`;
+                    group.forEach((mod) => {
+                        htmlBuilder += generateModHTML(mod);
+                    });
+                    htmlBuilder += `</div>`;
+                }
             }
         });
     }
@@ -426,7 +440,8 @@ function generateModHTML(mod) {
         }
         if (exactLocalRel) {
             displayModVersion = exactLocalRel.version_number;
-            localMcVersions = formatMinecraftVersions(exactLocalRel.game_versions);
+            const allowedLocalGVs = exactLocalRel.game_versions ? exactLocalRel.game_versions.filter(v => isVersionAllowed(v)) : [];
+            localMcVersions = allowedLocalGVs.length > 0 ? formatMinecraftVersions(allowedLocalGVs) : "Unknown";
         }
     }
 
@@ -534,11 +549,13 @@ function generateModHTML(mod) {
                 .map((l) => {
                     const isIris = l.toLowerCase() === "iris";
                     const isResourcePack = l.toLowerCase() === "resourcepack";
-                    const displayName = isIris ? "Iris Shaders" : (isResourcePack ? "Resource Pack" : capitalize(l));
+                    const isDataPack = l.toLowerCase() === "datapack";
+                    const isShader = l.toLowerCase() === "shader";
+                    const displayName = isIris ? "Iris Shaders" : (isResourcePack ? "Resource Pack" : (isDataPack ? "Data Pack" : (isShader ? "Shader" : capitalize(l))));
                     
                     const iconHtml = LOADER_FILES[l]
                         ? `<img src="${LOADER_FILES[l]}" alt="${displayName}" class="loader-img" title="${displayName}">`
-                        : `<span class="material-symbols-outlined loader-img" style="display:flex;align-items:center;justify-content:center;font-size:18px;">${isResourcePack ? "texture" : "palette"}</span>`;
+                        : `<span class="material-symbols-outlined loader-img" style="display:flex;align-items:center;justify-content:center;font-size:18px;">${isResourcePack ? "texture" : (isDataPack ? "data_object" : "palette")}</span>`;
                     
                     return `
                 <div class="loader-range-row">
@@ -559,12 +576,14 @@ function generateModHTML(mod) {
             const rel = mod.matchedRelease;
             const typeLetter = rel.version_type.charAt(0).toUpperCase();
             const typeClass = `type-${rel.version_type}`;
-            const displayGV = rel.game_versions && rel.game_versions.length > 0 ? formatMinecraftVersions(rel.game_versions) : "Unknown";
+            const allowedGVs = rel.game_versions ? rel.game_versions.filter(v => isVersionAllowed(v)) : [];
+            const displayGV = allowedGVs.length > 0 ? formatMinecraftVersions(allowedGVs) : "Unknown";
             
             let platformHtml = "";
-            if (mod.project_type === "resourcepack") {
-                const color = LOADER_COLORS["resourcepack"] || "#4CAF50";
-                const icon = TINY_LOADER_FILES["resourcepack"] || "";
+            if (mod.project_type === "resourcepack" || mod.project_type === "datapack") {
+                const typeName = mod.project_type === "resourcepack" ? "Resource Pack" : "Data Pack";
+                const color = LOADER_COLORS[mod.project_type] || "#4CAF50";
+                const icon = TINY_LOADER_FILES[mod.project_type] || "";
                 let iconStyle = icon 
                     ? `-webkit-mask: url(${icon}) no-repeat center / contain; mask: url(${icon}) no-repeat center / contain; background-color: ${color};`
                     : `background-color: ${color}; border-radius: 50%; padding: 2px;`;
@@ -572,7 +591,7 @@ function generateModHTML(mod) {
                 platformHtml = `
                     <span class="platform-tag">
                         <span class="platform-icon" style="${iconStyle}"></span>
-                        <span style="color: ${color};">Resource Pack</span>
+                        <span style="color: ${color};">${typeName}</span>
                     </span>
                 `;
             } else {
@@ -649,10 +668,18 @@ function generateModHTML(mod) {
             const downloadBgColor = isCurseForgeRel ? "#EB622B" : "#1BD96A";
             const downloadTextColor = isCurseForgeRel ? "#fff" : "#000";
 
+            let badgeStyle = "";
+            if (isCurseForgeRel) {
+                let badgeColor = "#259D3F";
+                if (rel.version_type === "beta") badgeColor = "#A379C9";
+                if (rel.version_type === "alpha") badgeColor = "#FABC3C";
+                badgeStyle = `border-radius: 2px; background-color: ${badgeColor};`;
+            }
+
             detailsHtml = `
                 <div class="details-top-row">
                     <div class="details-left">
-                        <span class="release-type-badge ${typeClass}" title="${capitalize(rel.version_type)}">${typeLetter}</span>
+                        <span class="release-type-badge ${typeClass}" style="${badgeStyle}" title="${capitalize(rel.version_type)}">${typeLetter}</span>
                         <div class="detail-col"><span class="detail-label">Name</span><span class="detail-val">${rel.version_number}<br><span style="font-size: 0.75rem; color: #9aa0a6;">${rel.name || mod.name}</span></span></div>
                         <div class="detail-col"><span class="detail-label">Game version:</span><span class="detail-val">${displayGV}</span></div>
                         <div class="detail-col"><span class="detail-label">Platform:</span><span class="detail-val">${platformHtml}</span></div>
@@ -752,7 +779,9 @@ export function updateLoaderButtons() {
         }
         
         let compCount = validMods.filter((m) => {
-            if (m.project_type === "resourcepack" || m.project_type === "shader") {
+            if (m.project_type === "resourcepack" || m.project_type === "datapack") {
+                return true;
+            } else if (m.project_type === "shader") {
                 return m.apiData.some(r => r.game_versions.includes(currentVersion));
             } else {
                 let filteredData = m.apiData.filter(r => r.loaders.includes(loader));
@@ -803,4 +832,14 @@ export function showToast(title, message, duration = 5000) {
         toast.classList.remove('show');
         setTimeout(() => toast.remove(), 400); // Wait for transition
     }, duration);
+}
+
+export function revealUI() {
+    const controlsBar = document.getElementById('controls-bar');
+    const versionSidebar = document.getElementById('version-sidebar');
+    const appContainer = document.querySelector('.app-container');
+    
+    if (controlsBar) controlsBar.classList.add('show-ui');
+    if (versionSidebar) versionSidebar.classList.add('show-ui');
+    if (appContainer) appContainer.classList.add('show-ui');
 }

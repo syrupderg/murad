@@ -22,8 +22,13 @@ body {
 
 .app-container {
     display: grid;
-    grid-template-columns: 1fr 300px;
+    grid-template-columns: 1fr;
     height: 100vh;
+    transition: grid-template-columns 0.4s ease;
+}
+
+.app-container.show-ui {
+    grid-template-columns: 1fr 300px;
 }
 
 .workspace {
@@ -137,4 +142,25 @@ body {
 
 #btn-fetch-url:hover {
     background: #2e7d32;
+}
+
+.hidden-ui {
+    opacity: 0;
+    transform: translateY(20px);
+    pointer-events: none;
+    position: absolute;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), visibility 0s 0.5s;
+}
+
+.hidden-ui.show-ui {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+    position: relative;
+    height: auto;
+    visibility: visible;
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275), visibility 0s 0s;
 }

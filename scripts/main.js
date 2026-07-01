@@ -7,7 +7,7 @@ import {
     getGroupForVersion,
 } from "./utils.js";
 import { loadMcVersions, fetchModData, updateVersionsCache } from "./api.js";
-import { renderSidebar, renderAll, updateLoaderButtons, updateModDOM, showToast } from "./ui.js";
+import { renderSidebar, renderAll, updateLoaderButtons, updateModDOM, showToast, revealUI } from "./ui.js";
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("file-input");
@@ -56,7 +56,7 @@ async function triggerBackgroundPreciseFetches() {
             } else {
                 const cached = state.cfPreciseFileCache[fileId];
                 mod.matchedRelease.downloads = cached.downloadCount;
-                mod.matchedRelease.version_number = cached.displayName || cached.fileName;
+                mod.matchedRelease.name = cached.displayName;
                 mod.matchedRelease.date_published = cached.fileDate;
             }
         }
@@ -91,7 +91,7 @@ async function processCfQueue() {
 
                     if (task.mod.matchedRelease && task.mod.matchedRelease.id === task.fileId) {
                         task.mod.matchedRelease.downloads = precise.downloadCount;
-                        task.mod.matchedRelease.version_number = precise.displayName || precise.fileName;
+                        task.mod.matchedRelease.name = precise.displayName;
                         task.mod.matchedRelease.date_published = precise.fileDate;
                         
                         updateModDOM(task.mod);
@@ -145,11 +145,6 @@ window.toggleSnapshots = (e) => {
     showLoadingAndUpdate("Loading Snapshots...");
 };
 
-window.toggleOlderVersions = (e) => {
-    state.showOlderVersions = e.target.checked;
-    showLoadingAndUpdate("Loading Older Versions...");
-};
-
 window.setVersion = (version) => {
     state.selectedTargetVersions = [version];
     showLoadingAndUpdate("Evaluating Mods...");
@@ -191,6 +186,13 @@ window.toggleCatSort = (priority) => {
     }, 10);
 };
 
+window.toggleCatCollapse = (priority) => {
+    state.catCollapsed[priority] = !state.catCollapsed[priority];
+    setTimeout(() => {
+        renderAll();
+    }, 10);
+};
+
 window.downloadOverrideFile = () => {
     if (!state.pendingOverrideDataStr) return;
     const downloadNode = document.createElement("a");
@@ -224,7 +226,7 @@ window.downloadModPack = async (format) => {
     const filteredList = state.scannedMods.filter((m) => m.name.toLowerCase().includes(state.searchQuery));
     const validMods = filteredList.filter((m) => {
         if (!m.matchedRelease) return false;
-        if (m.priority === 1 || m.priority === 6) return true;
+        if ([1, 6, 7, 8].includes(m.priority)) return true;
         if (m.priority === 2 && !excludeKinda) return true;
         return false;
     });
@@ -320,6 +322,12 @@ window.downloadModPack = async (format) => {
 
 async function evaluateAllMods() {
     state.scannedMods.forEach((mod) => {
+        if (mod.apiData === "RATE_LIMIT") {
+            mod.priority = PRIORITY.NOT_FOUND;
+            mod.statusHtml = `<span class="badge red" style="background: #e65100;">Rate Limited (Please wait a minute and try again)</span>`;
+            mod.matchedRelease = null;
+            return;
+        }
         if (mod.apiData === "ERROR") {
             mod.priority = PRIORITY.NOT_FOUND;
             mod.statusHtml = `<span class="badge red">Not found on Modrinth or CurseForge</span>`;
@@ -341,8 +349,29 @@ async function evaluateAllMods() {
             });
         }
 
-        if (mod.project_type === "resourcepack" || mod.project_type === "shader") {
-            mod.priority = PRIORITY.RESOURCE_SHADER;
+        if (mod.apiData.some(r => r.loaders && r.loaders.includes("datapack"))) {
+            mod.project_type = "datapack";
+        }
+
+        if (mod.project_type === "resourcepack" || mod.project_type === "datapack" || mod.project_type === "shader") {
+            if (mod.project_type === "resourcepack") mod.priority = PRIORITY.RESOURCE_PACK;
+            else if (mod.project_type === "datapack") mod.priority = PRIORITY.DATA_PACK;
+            else if (mod.project_type === "shader") mod.priority = PRIORITY.SHADER;
+            
+            if (mod.project_type === "resourcepack" || mod.project_type === "datapack" || mod.project_type === "shader") {
+                let latestRelease = null;
+                for (let r of mod.apiData) {
+                    if (r.game_versions.some(v => isVersionAllowed(v))) {
+                        latestRelease = r;
+                        break;
+                    }
+                }
+                if (!latestRelease) latestRelease = mod.apiData[0];
+                mod.statusHtml = `<span class="badge green">Compatible: ${latestRelease.version_number}</span>`;
+                mod.matchedRelease = latestRelease;
+                return;
+            }
+
             const exactMatch = mod.apiData.find((release) => release.game_versions.includes(targetVersion));
             let allGameVersions = new Set();
             mod.apiData.forEach((release) => {
@@ -364,7 +393,7 @@ async function evaluateAllMods() {
                     <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
                         <span class="badge yellow" style="white-space: normal; max-width: 182px; text-align: center;">
                             <a>Kinda Compatible: ${modVersion}</a> <br><br>
-                            This ${mod.project_type === "shader" ? "shader" : "pack"} supports <u>${latestMc}</u>, but it can work with <u>${targetVersion}</u> after some tweaking.
+                            This shader supports <u>${latestMc}</u>, but it can work with <u>${targetVersion}</u> after some tweaking.
                         </span>
                     </div>`;
             } else {
@@ -650,6 +679,8 @@ async function handleFiles(files) {
 
         if (loadingText) loadingText.innerText = "Evaluating compatibility...";
         
+        if (state.scannedMods.length > 0) revealUI();
+        
         await evaluateAllMods();
         if (progressBar) progressBar.style.width = "100%";
         
@@ -685,11 +716,6 @@ document.addEventListener("DOMContentLoaded", () => {
         state.includeSnapshots = snapshotsToggle.checked;
     }
 
-    const olderToggle = document.getElementById("toggle-older");
-    if (olderToggle) {
-        state.showOlderVersions = olderToggle.checked;
-    }
-
     loadMcVersions();
 });
 
@@ -716,7 +742,16 @@ if (btnFetchUrl) {
             let downloadUrl = rawUrl;
             let filename = "";
 
-            const mrMatch = rawUrl.match(/modrinth\.com\/(?:mod|modpack|resourcepack|shader)\/([^/]+)\/version\/([^/?#]+)/);
+            const mrMatch = rawUrl.match(/modrinth\.com\/(?:mod|modpack|resourcepack|shader|datapack)\/([^/]+)\/version\/([^/?#]+)/);
+            const cfMatch = rawUrl.match(/curseforge\.com\/minecraft\/(?:mc-mods|modpacks|texture-packs|customization)\/([^/]+)\/(?:files|download)\/(\d+)/);
+
+            if (rawUrl.includes("modrinth.com") && !mrMatch) {
+                throw new Error("Please provide a direct Modrinth version URL (e.g. click 'Versions', select one, and copy that URL).");
+            }
+            if (rawUrl.includes("curseforge.com") && !cfMatch) {
+                throw new Error("Please provide a direct CurseForge file URL (e.g. click 'Files', select one, and copy that URL).");
+            }
+
             if (mrMatch) {
                 loadingText.innerText = "Fetching Modrinth version...";
                 const projectSlug = mrMatch[1];
@@ -728,10 +763,8 @@ if (btnFetchUrl) {
                 downloadUrl = primary.url;
                 filename = primary.filename;
             } 
-            else if (rawUrl.includes("curseforge.com")) {
+            else if (cfMatch) {
                 loadingText.innerText = "Resolving CurseForge link...";
-                const cfMatch = rawUrl.match(/curseforge\.com\/minecraft\/(?:mc-mods|modpacks|texture-packs|customization)\/([^/]+)\/(?:files|download)\/(\d+)/);
-                if (!cfMatch) throw new Error("Could not parse CurseForge URL. Must include project slug and file ID.");
                 
                 const projectSlug = cfMatch[1];
                 const fileId = cfMatch[2];
@@ -743,17 +776,19 @@ if (btnFetchUrl) {
                 if (!searchData.data || searchData.data.length === 0) throw new Error("Mod not found on CurseForge");
                 const modId = searchData.data[0].id;
 
-                const downloadRes = await fetch(`${CF_WORKER}/v1/mods/${modId}/files/${fileId}/download-url`);
-                if (!downloadRes.ok) throw new Error("Failed to get CurseForge download URL from worker");
-                const downloadData = await downloadRes.json();
-                
                 const fileRes = await fetch(`${CF_WORKER}/v1/mods/${modId}/files/${fileId}`);
-                if (fileRes.ok) {
-                    const fileData = await fileRes.json();
-                    filename = fileData.data.fileName;
+                if (!fileRes.ok) throw new Error("Failed to get CurseForge file metadata from worker");
+                const fileData = await fileRes.json();
+                filename = fileData.data.fileName;
+                
+                let actualDownloadUrl = fileData.data.downloadUrl;
+                if (!actualDownloadUrl) {
+                    const part1 = Math.floor(fileId / 1000);
+                    const part2 = (fileId % 1000).toString().padStart(3, '0');
+                    actualDownloadUrl = `https://edge.forgecdn.net/files/${part1}/${part2}/${encodeURIComponent(filename)}`;
                 }
                 
-                downloadUrl = `${CF_WORKER}/proxy-download?url=${encodeURIComponent(downloadData.data)}&filename=${encodeURIComponent(filename)}`;
+                downloadUrl = `${CF_WORKER}/proxy-download?url=${encodeURIComponent(actualDownloadUrl)}&filename=${encodeURIComponent(filename)}`;
             }
             loadingText.innerText = "Downloading...";
             const response = await fetch(downloadUrl);
@@ -771,7 +806,7 @@ if (btnFetchUrl) {
 
         } catch (err) {
             console.error(err);
-            alert("Error: " + err.message);
+            showToast("Invalid URL", err.message);
             loadingOverlay.style.display = "none";
         }
     });

@@ -1,15 +1,15 @@
 export const state = {
-    selectedLoader: "fabric",
-    selectedTargetVersions: ["1.21.1"],
+    selectedLoader: null,
+    selectedTargetVersions: [],
     scannedMods: [],
     rawMcVersions: [],
     mcVersionsCache: [],
     includeSnapshots: false, 
-    showOlderVersions: false,
     currentSortMode: "COMP",
     nameSortDir: 1,
     compSortDir: 1,
-    catSortDirs: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1 },
+    catSortDirs: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 1 },
+    catCollapsed: { 1: false, 2: false, 3: false, 4: false, 5: false, 6: false, 7: false, 8: false },
     searchQuery: "",
     pendingOverrideDataStr: "",
     pendingOverrideFileName: "",
@@ -17,7 +17,7 @@ export const state = {
     projectSlugCache: {}
 };
 
-export const PRIORITY = { GREEN: 1, YELLOW: 2, RED: 3, NOT_FOUND: 4, CHECKING: 5, RESOURCE_SHADER: 6 };
+export const PRIORITY = { GREEN: 1, YELLOW: 2, RED: 3, NOT_FOUND: 4, CHECKING: 5, RESOURCE_PACK: 6, SHADER: 7, DATA_PACK: 8 };
 
 export const PRIORITY_NAMES = {
     1: "Compatible",
@@ -25,7 +25,9 @@ export const PRIORITY_NAMES = {
     3: "Incompatible",
     4: "Not Found",
     5: "Checking / Errors",
-    6: "Shaders & Resource Packs",
+    6: "Resource Packs",
+    7: "Shaders",
+    8: "Data Packs",
 };
 
 export const LOADER_FILES = {
@@ -36,6 +38,7 @@ export const LOADER_FILES = {
     optifine: "icons/optifine.svg",
     iris: "icons/iris.svg",
     resourcepack: "icons/resource-pack.svg",
+    datapack: "icons/data-pack.svg",
 };
 
 export const TINY_LOADER_FILES = {
@@ -46,6 +49,7 @@ export const TINY_LOADER_FILES = {
     optifine: "icons/optifine-tiny.svg",
     iris: "icons/iris-tiny.svg",
     resourcepack: "icons/resource-pack-tiny.svg",
+    datapack: "icons/data-pack-tiny.svg",
 };
 
 export const LOADER_COLORS = {
@@ -56,6 +60,7 @@ export const LOADER_COLORS = {
     optifine: "#FFC526",
     iris: "#448aff",
     resourcepack: "#1BD96A", 
+    datapack: "#4FC3F7",
 };
 
 export const LOADER_SORT_ORDER = {
@@ -70,10 +75,7 @@ export const LOADER_SORT_ORDER = {
 
 export function isVersionAllowed(v) {
     let isSnapshot = !/^\d+\.\d+(\.\d+)?$/.test(v);
-    let groupName = getGroupForVersion(v);
-    let isOlder = !groupName.includes("26.") && !groupName.includes("1.21") && !groupName.includes("1.20");
 
-    if (!state.showOlderVersions && isOlder) return false;
     if (!state.includeSnapshots && isSnapshot) return false;
 
     return true;
@@ -209,11 +211,13 @@ export function getGroupForVersion(v) {
     if (stableGroups[v]) return stableGroups[v];
 
     if (v.includes("-rc") || v.includes("-pre") || v.includes("-snapshot") || v.includes(" Pre-Release")) {
+        if (!state.includeSnapshots) return false;
         let baseVersion = v.split(/-| Pre-Release/)[0].trim();
         if (stableGroups[baseVersion]) return stableGroups[baseVersion];
     }
 
     if (/^\d{2}w\d{2}[a-z]$/.test(v) || v.includes("potato") || v.includes("craftmine") || v.includes("infinite") || v.includes("oneblockatatime") || v.includes("or_b")) {
+        if (!state.includeSnapshots) return false;
         let year = parseInt(v.substring(0, 2));
         let week = parseInt(v.substring(3, 5)) || 0;
 
@@ -321,11 +325,11 @@ export function getLoaderVersionRanges(apiData, projectType = "mod") {
     const allowedLoaders = ["fabric", "quilt", "forge", "neoforge", "iris", "optifine"];
     
     apiData.forEach((release) => {
-        if (projectType === "resourcepack") {
-            if (!loaderVersions["resourcepack"]) loaderVersions["resourcepack"] = new Set();
+        if (projectType === "resourcepack" || projectType === "datapack") {
+            if (!loaderVersions[projectType]) loaderVersions[projectType] = new Set();
             release.game_versions.forEach((v) => {
-                if (/^\d+\.\d+(\.\d+)?$/.test(v) && isVersionAllowed(v)) {
-                    loaderVersions["resourcepack"].add(v);
+                if (isVersionAllowed(v)) {
+                    loaderVersions[projectType].add(v);
                 }
             });
         } else {
@@ -335,7 +339,7 @@ export function getLoaderVersionRanges(apiData, projectType = "mod") {
                 if (!loaderVersions[safeLoader]) loaderVersions[safeLoader] = new Set();
                 
                 release.game_versions.forEach((v) => {
-                    if (/^\d+\.\d+(\.\d+)?$/.test(v) && isVersionAllowed(v)) {
+                    if (isVersionAllowed(v)) {
                         loaderVersions[safeLoader].add(v);
                     }
                 });
