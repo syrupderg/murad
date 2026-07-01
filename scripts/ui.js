@@ -11,8 +11,98 @@ import {
     capitalize,
     getHighestVersion,
     getLoaderVersionRanges,
-    getGroupForVersion
+    getGroupForVersion,
+    isConsecutiveVersion
 } from "./utils.js";
+
+function formatMinecraftVersions(versions) {
+    if (!versions || !Array.isArray(versions) || versions.length === 0) return "Unknown";
+    
+    const parsed = [...new Set(versions)].map(v => {
+        const parts = v.split('.');
+        return {
+            original: v,
+            maj: parseInt(parts[0]) || 0,
+            min: parseInt(parts[1]) || 0,
+            pat: parseInt(parts[2]) || 0,
+            isValid: /^\d+\.\d+(\.\d+)?$/.test(v)
+        };
+    });
+
+    const valid = parsed.filter(p => p.isValid);
+    const invalid = parsed.filter(p => !p.isValid).map(p => p.original);
+    
+    const groups = {};
+    valid.forEach(p => {
+        const key = `${p.maj}.${p.min}`;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(p.pat);
+    });
+    
+    const results = [];
+    
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const [aMaj, aMin] = a.split('.').map(Number);
+        const [bMaj, bMin] = b.split('.').map(Number);
+        if (aMaj !== bMaj) return bMaj - aMaj;
+        return bMin - aMin;
+    });
+    
+    sortedKeys.forEach(key => {
+        const patches = [...new Set(groups[key])].sort((a, b) => a - b);
+        let ranges = [];
+        let start = patches[0];
+        let prev = patches[0];
+        
+        for (let i = 1; i < patches.length; i++) {
+            if (patches[i] === prev + 1) {
+                prev = patches[i];
+            } else {
+                ranges.push({ start, end: prev });
+                start = patches[i];
+                prev = patches[i];
+            }
+        }
+        ranges.push({ start, end: prev });
+        
+        ranges.forEach(r => {
+            if (r.start === r.end) {
+                results.push(r.start === 0 ? key : `${key}.${r.start}`);
+            } else if (r.start === 0 || r.start === 1) {
+                results.push(`${key}.x`); 
+            } else {
+                results.push(`${key}.${r.start}–${key}.${r.end}`); 
+            }
+        });
+    });
+
+    const compressedResults = [];
+    let i = 0;
+    while (i < results.length) {
+        if (results[i].endsWith('.x')) {
+            let j = i + 1;
+            while (j < results.length && results[j].endsWith('.x')) {
+                let basePrev = results[j-1].replace('.x', '');
+                let baseCurr = results[j].replace('.x', '');
+                
+                if (isConsecutiveVersion(basePrev, baseCurr)) {
+                    j++;
+                } else {
+                    break;
+                }
+            }
+            if (j - i > 1) {
+                compressedResults.push(`${results[i]}–${results[j-1]}`);
+                i = j;
+                continue;
+            }
+        }
+        compressedResults.push(results[i]);
+        i++;
+    }
+    
+    return [...compressedResults, ...invalid].join(", ");
+}
 
 export function renderSidebar() {
     const versionSelector = document.getElementById("version-selector");
@@ -251,6 +341,28 @@ export function updateDownloadPackBar(list) {
     }
 }
 
+export function updateModDOM(mod) {
+    const safeId = mod.id.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const modEl = document.getElementById(`mod-${safeId}`);
+    if (modEl) {
+        const detailsEl = document.getElementById(`details-${safeId}`);
+        const isExpanded = detailsEl && detailsEl.classList.contains("expanded");
+        
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = generateModHTML(mod);
+        const newModEl = tempDiv.firstElementChild;
+        
+        if (isExpanded) {
+            const newDetailsEl = newModEl.querySelector(`#details-${safeId}`);
+            const newBtnEl = newModEl.querySelector(`#btn-expand-${safeId}`);
+            if (newDetailsEl) newDetailsEl.classList.add("expanded");
+            if (newBtnEl) newBtnEl.classList.add("expanded");
+        }
+        
+        modEl.replaceWith(newModEl);
+    }
+}
+
 export function renderAll() {
     const modList = document.getElementById("mod-list");
     if (!modList) return;
@@ -292,6 +404,8 @@ export function renderAll() {
 }
 
 function generateModHTML(mod) {
+    const isModCurseForge = mod.type === "curseforge" || /^\d+$/.test(mod.id);
+    
     let rangesHtml = '<span class="range-text">Loading...</span>';
     let detailsHtml = "";
     let hasRequiredDeps = false,
@@ -301,6 +415,21 @@ function generateModHTML(mod) {
         anyOptLoaded = false,
         anyIncLoaded = false;
     let depsHtml = "";
+
+    let localMcVersions = "Unknown";
+    let displayModVersion = mod.version;
+
+    if (Array.isArray(mod.apiData)) {
+        let exactLocalRel = mod.apiData.find(rel => rel.files && rel.files.some(f => f.hashes && f.hashes.sha1 === mod.fileHash));
+        if (!exactLocalRel && mod.version !== "Unknown" && mod.version !== "mrpack") {
+            exactLocalRel = mod.apiData.find(rel => rel.version_number === mod.version || rel.version_number.includes(mod.version));
+        }
+        if (exactLocalRel) {
+            displayModVersion = exactLocalRel.version_number;
+            localMcVersions = formatMinecraftVersions(exactLocalRel.game_versions);
+        }
+    }
+
     if (mod.matchedRelease && mod.matchedRelease.dependencies && mod.matchedRelease.dependencies.length > 0) {
         const deps = mod.matchedRelease.dependencies;
         const reqDeps = deps.filter((d) => d.dependency_type === "required");
@@ -354,8 +483,25 @@ function generateModHTML(mod) {
                                             ? `border-color: rgba(255, 82, 82, 0.4); background: rgba(255, 82, 82, 0.1);`
                                             : `border-color: rgba(27, 217, 106, 0.4); background: rgba(27, 217, 106, 0.1);`;
                                 }
-                                const tooltipText = isLoaded ? `Already loaded in MURAD!` : `View on Modrinth`;
-                                return `<a href="https://modrinth.com/mod/${d.project_id}" target="_blank" class="dep-badge clickable-dep" title="${tooltipText}" style="text-decoration:none; ${loadedStyle}">
+                                
+                                const slug = (state.projectSlugCache && state.projectSlugCache[d.project_id]) ? state.projectSlugCache[d.project_id] : d.project_id;
+                                const isCurseForgeDep = isModCurseForge || /^\d+$/.test(d.project_id);
+                                
+                                let depLink = "";
+                                if (isCurseForgeDep) {
+                                    if (/^\d+$/.test(slug)) {
+                                        depLink = `https://www.curseforge.com/projects/${slug}`;
+                                    } else {
+                                        depLink = `https://www.curseforge.com/minecraft/mc-mods/${slug}`;
+                                    }
+                                } else {
+                                    depLink = `https://modrinth.com/mod/${slug}`;
+                                }
+                                
+                                const platformName = isCurseForgeDep ? "CurseForge" : "Modrinth";
+                                const tooltipText = isLoaded ? `Already loaded in MURAD!` : `View on ${platformName}`;
+                                
+                                return `<a href="${depLink}" target="_blank" class="dep-badge clickable-dep" title="${tooltipText}" style="text-decoration:none; ${loadedStyle}">
                                 ${name}${loadedIcon}
                             </a>`;
                             })
@@ -376,19 +522,24 @@ function generateModHTML(mod) {
             `;
         }
     }
+
     if (mod.apiData && mod.apiData !== "ERROR") {
-        const loaderRanges = getLoaderVersionRanges(mod.apiData);
+        const loaderRanges = getLoaderVersionRanges(mod.apiData, mod.project_type);
         const loaders = Object.keys(loaderRanges).sort(
             (a, b) => (LOADER_SORT_ORDER[a] || 99) - (LOADER_SORT_ORDER[b] || 99)
         );
+        
         if (loaders.length > 0) {
             rangesHtml = loaders
                 .map((l) => {
                     const isIris = l.toLowerCase() === "iris";
+                    const isResourcePack = l.toLowerCase() === "resourcepack";
+                    const displayName = isIris ? "Iris Shaders" : (isResourcePack ? "Resource Pack" : capitalize(l));
+                    
                     const iconHtml = LOADER_FILES[l]
-                        ? `<img src="${LOADER_FILES[l]}" alt="${capitalize(l)}" class="loader-img" title="${capitalize(l)}">`
-                        : `<span class="material-symbols-outlined loader-img" style="display:flex;align-items:center;justify-content:center;font-size:18px;">palette</span>`;
-                    const displayName = isIris ? "Iris Shaders" : capitalize(l);
+                        ? `<img src="${LOADER_FILES[l]}" alt="${displayName}" class="loader-img" title="${displayName}">`
+                        : `<span class="material-symbols-outlined loader-img" style="display:flex;align-items:center;justify-content:center;font-size:18px;">${isResourcePack ? "texture" : "palette"}</span>`;
+                    
                     return `
                 <div class="loader-range-row">
                     ${iconHtml}
@@ -403,79 +554,124 @@ function generateModHTML(mod) {
         } else {
             rangesHtml = '<span class="range-text">No supported versions >= 1.20 found.</span>';
         }
+        
         if (mod.matchedRelease) {
             const rel = mod.matchedRelease;
             const typeLetter = rel.version_type.charAt(0).toUpperCase();
             const typeClass = `type-${rel.version_type}`;
-            const highestGV = getHighestVersion([...rel.game_versions]) || rel.game_versions[0];
-            const allowedLoaders = ["fabric", "quilt", "forge", "neoforge", "iris", "optifine"];
-            const platformHtml = rel.loaders
-                .filter((l) => allowedLoaders.includes(l.toLowerCase()))
-                .map((l) => {
-                    const isIris = l.toLowerCase() === "iris";
-                    const isOptifine = l.toLowerCase() === "optifine";
-                    const color = LOADER_COLORS[l] || "#448aff";
-                    const icon = TINY_LOADER_FILES[l] || "";
-                    let textStyle = "";
-                    if (isOptifine) {
-                        textStyle = `background: linear-gradient(180deg, #FFC526, #DC7722); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold;`;
-                    } else if (isIris) {
-                        textStyle = `background: linear-gradient(90deg, #E23A3A, #F4691D, #EE7A49, #F2BD2B, #F4B452, #8DD567, #1EB770, #0FAA97, #2FDBB4, #4C63AF, #4C97E0, #8BCDF7, #A481EC, #E4A8E6, #E67D95); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold;`;
-                    } else {
-                        textStyle = `color: ${color};`;
-                    }
-                    let iconStyle = "";
-                    if (isIris && icon) {
-                        iconStyle = `background: url(${icon}) no-repeat center / contain;`;
-                    } else if (icon) {
-                        let bgRule = isOptifine
-                            ? `background: linear-gradient(180deg, #FFC526, #DC7722);`
-                            : `background-color: ${color};`;
-                        iconStyle = `-webkit-mask: url(${icon}) no-repeat center / contain; mask: url(${icon}) no-repeat center / contain; ${bgRule}`;
-                    } else {
-                        let bgRule = isOptifine
-                            ? `background: linear-gradient(180deg, #FFC526, #DC7722);`
-                            : `background-color: ${color};`;
-                        iconStyle = `${bgRule} border-radius: 50%; padding: 2px;`;
-                    }
-                    const displayName = isIris ? "Iris Shaders" : capitalize(l);
-                    return `
-                        <span class="platform-tag">
-                            <span class="platform-icon" style="${iconStyle}"></span>
-                            <span style="${textStyle}">${displayName}</span>
-                        </span>
-                    `;
-                })
-                .join("");
+            const displayGV = rel.game_versions && rel.game_versions.length > 0 ? formatMinecraftVersions(rel.game_versions) : "Unknown";
+            
+            let platformHtml = "";
+            if (mod.project_type === "resourcepack") {
+                const color = LOADER_COLORS["resourcepack"] || "#4CAF50";
+                const icon = TINY_LOADER_FILES["resourcepack"] || "";
+                let iconStyle = icon 
+                    ? `-webkit-mask: url(${icon}) no-repeat center / contain; mask: url(${icon}) no-repeat center / contain; background-color: ${color};`
+                    : `background-color: ${color}; border-radius: 50%; padding: 2px;`;
+                
+                platformHtml = `
+                    <span class="platform-tag">
+                        <span class="platform-icon" style="${iconStyle}"></span>
+                        <span style="color: ${color};">Resource Pack</span>
+                    </span>
+                `;
+            } else {
+                const allowedLoaders = ["fabric", "quilt", "forge", "neoforge", "iris", "optifine"];
+                platformHtml = rel.loaders
+                    .filter((l) => allowedLoaders.includes(l.toLowerCase()))
+                    .map((l) => {
+                        const isIris = l.toLowerCase() === "iris";
+                        const isOptifine = l.toLowerCase() === "optifine";
+                        const color = LOADER_COLORS[l] || "#448aff";
+                        const icon = TINY_LOADER_FILES[l] || "";
+                        let textStyle = "";
+                        if (isOptifine) {
+                            textStyle = `background: linear-gradient(180deg, #FFC526, #DC7722); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold;`;
+                        } else if (isIris) {
+                            textStyle = `background: linear-gradient(90deg, #E23A3A, #F4691D, #EE7A49, #F2BD2B, #F4B452, #8DD567, #1EB770, #0FAA97, #2FDBB4, #4C63AF, #4C97E0, #8BCDF7, #A481EC, #E4A8E6, #E67D95); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-weight: bold;`;
+                        } else {
+                            textStyle = `color: ${color};`;
+                        }
+                        let iconStyle = "";
+                        if (isIris && icon) {
+                            iconStyle = `background: url(${icon}) no-repeat center / contain;`;
+                        } else if (icon) {
+                            let bgRule = isOptifine
+                                ? `background: linear-gradient(180deg, #FFC526, #DC7722);`
+                                : `background-color: ${color};`;
+                            iconStyle = `-webkit-mask: url(${icon}) no-repeat center / contain; mask: url(${icon}) no-repeat center / contain; ${bgRule}`;
+                        } else {
+                            let bgRule = isOptifine
+                                ? `background: linear-gradient(180deg, #FFC526, #DC7722);`
+                                : `background-color: ${color};`;
+                            iconStyle = `${bgRule} border-radius: 50%; padding: 2px;`;
+                        }
+                        const displayName = isIris ? "Iris Shaders" : capitalize(l);
+                        return `
+                            <span class="platform-tag">
+                                <span class="platform-icon" style="${iconStyle}"></span>
+                                <span style="${textStyle}">${displayName}</span>
+                            </span>
+                        `;
+                    })
+                    .join("");
+            }
+            
+            const isCurseForgeRel = isModCurseForge || /^\d+$/.test(rel.project_id);
+            
             const dateObj = new Date(rel.date_published);
-            const dateStr = dateObj.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+            const dateOptions = { year: "numeric", month: "short", day: "numeric" };
+            if (isCurseForgeRel) {
+                dateOptions.timeZone = "UTC";
+            }
+            
+            const dateStr = dateObj.toLocaleDateString(undefined, dateOptions);
             const timeAgoStr = timeAgo(rel.date_published);
-            const dlStr = rel.downloads.toLocaleString();
+            
+            const dlStr = (rel.downloads || 0).toLocaleString();
+
             const primaryFile = rel.files.find((f) => f.primary) || rel.files[0];
             const directDownloadUrl = primaryFile ? primaryFile.url : "#";
+            
+            let extLink = "";
+            if (isCurseForgeRel) {
+                const cfSlug = rel.project_slug || (state.projectSlugCache && state.projectSlugCache[mod.id]) || mod.id;
+                if (/^\d+$/.test(cfSlug)) {
+                    extLink = `https://www.curseforge.com/projects/${cfSlug}`; 
+                } else {
+                    extLink = `https://www.curseforge.com/minecraft/mc-mods/${cfSlug}/files/${rel.id}`;
+                }
+            } else {
+                extLink = `https://modrinth.com/mod/${rel.project_id || mod.id}/version/${rel.id}`;
+            }
+            const platformName = isCurseForgeRel ? "CurseForge" : "Modrinth";
+
+            const downloadBgColor = isCurseForgeRel ? "#EB622B" : "#1BD96A";
+            const downloadTextColor = isCurseForgeRel ? "#fff" : "#000";
+
             detailsHtml = `
                 <div class="details-top-row">
                     <div class="details-left">
                         <span class="release-type-badge ${typeClass}" title="${capitalize(rel.version_type)}">${typeLetter}</span>
-                        <div class="detail-col"><span class="detail-label">Name</span><span class="detail-val">${rel.version_number}<br><span style="font-size: 0.75rem; color: #9aa0a6;">${rel.name}</span></span></div>
-                        <div class="detail-col"><span class="detail-label">Game version:</span><span class="detail-val">${highestGV}</span></div>
+                        <div class="detail-col"><span class="detail-label">Name</span><span class="detail-val">${rel.version_number}<br><span style="font-size: 0.75rem; color: #9aa0a6;">${rel.name || mod.name}</span></span></div>
+                        <div class="detail-col"><span class="detail-label">Game version:</span><span class="detail-val">${displayGV}</span></div>
                         <div class="detail-col"><span class="detail-label">Platform:</span><span class="detail-val">${platformHtml}</span></div>
                         <div class="detail-col"><span class="detail-label">Published</span><span class="detail-val">${dateStr} <span style="color: #9aa0a6;">(${timeAgoStr})</span></span></div>
                         <div class="detail-col"><span class="detail-label">Downloads:</span><span class="detail-val">${dlStr}</span></div>
                     </div>
                     <div class="details-right">
-                        <a href="${directDownloadUrl}" class="download-btn"><span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download</a>
-                        <a href="https://modrinth.com/mod/${rel.project_id}/version/${rel.id}" target="_blank" class="download-btn" style="background: rgba(255, 255, 255, 0.1); color: #e0e0e0;"><span class="material-symbols-outlined" style="font-size: 18px;">open_in_new</span></a>
+                        <a href="${directDownloadUrl}" class="download-btn" style="background: ${downloadBgColor}; color: ${downloadTextColor}; border: none;"><span class="material-symbols-outlined" style="font-size: 18px;">download</span> Download</a>
+                        <a href="${extLink}" target="_blank" class="download-btn" style="background: rgba(255, 255, 255, 0.1); color: #e0e0e0;" title="View on ${platformName}"><span class="material-symbols-outlined" style="font-size: 18px;">open_in_new</span></a>
                     </div>
                 </div>
                 ${depsHtml}
             `;
         } else {
-            detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">No matching version found on Modrinth.</div>`;
+            detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">No matching version found.</div>`;
         }
     } else if (mod.apiData === "ERROR") {
         rangesHtml = '<span class="range-text">N/A</span>';
-        detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">Error connecting to Modrinth API.</div>`;
+        detailsHtml = `<div style="width: 100%; text-align: center; color: #9aa0a6;">Mod not found or API error.</div>`;
     }
     const safeId = mod.id.replace(/[^a-zA-Z0-9_-]/g, "_");
     let depIconsHtml = "";
@@ -515,7 +711,8 @@ function generateModHTML(mod) {
             <div class="mod-top-row" style="display: flex; justify-content: space-between; width: 100%;">
                 <div class="mod-info">
                     <div class="mod-header"><strong>${mod.name}</strong></div>
-                    <span class="version-text">Local Version: ${mod.version}</span>
+                    <span class="version-text">Mod Version: ${displayModVersion}</span>
+                    <span class="version-text" style="display: block; font-size: 0.8rem; color: #9aa0a6; margin-top: 2px;">Minecraft Version: ${localMcVersions}</span>
                     <div class="ranges-container">
                         <span class="ranges-title">Supported Version Ranges:</span>
                         ${rangesHtml}

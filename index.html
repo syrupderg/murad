@@ -42,14 +42,14 @@
         <main class="workspace">
             <header>
                 <h1>MURAD - Mod Update <span class="pixel-text">RADAR</span></h1>
-                <p>Drop your JARs, ZIPs, or MRPACKs to check compatibility</p>
+                <p>Drop your ZIPs or MRPACKs to check compatibility</p>
             </header>
 
             <div id="drop-zone" class="m3-card">
                 <span class="material-symbols-outlined" style="font-size: 48px; color: var(--m3-primary); margin-bottom: 10px;">upload_file</span>
-                <h2>Drag & Drop your mods here</h2>
-                <p style="color: #9aa0a6;">Supports .jar, .zip, .mrpack, .tar, .tar.gz</p>
-                <input type="file" id="file-input" multiple accept=".jar,.zip,.mrpack,.tar,.tar.gz,.tgz" style="display: none;">
+                <h2>Drag & Drop your modpack file here!</h2>
+                <p style="color: #9aa0a6;">Supports only modpack files (.mrpack or .zip)</p>
+                <input type="file" id="file-input" accept=".mrpack,.zip" style="display: none;" multiple>
             </div>
 
             <div class="stats-row">
